@@ -1,0 +1,7 @@
+numpy
+scipy
+cvxpy
+pandas
+toolz
+networkx
+matplotlib
