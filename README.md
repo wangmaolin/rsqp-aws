@@ -5,7 +5,7 @@ Reconfigurable Solvers for QP running on AWS FPGAs
 - Source program running on FPGA
 	- OSQP indirect `./aws/osqp_indirect.c`
 	- unit test `./aws/ut_spmv.c`, etc.
-- Instruction set for QP solver 
+- Instruction set for different solver algorithms
 	- `./aws/inst_set.py`
 	- example IR generated `./temp/ir_table.csv`
 - compiler 
