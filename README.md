@@ -1,8 +1,50 @@
-Reconfiguable Solvers for QP running on AWS FPGAs
+Reconfigurable Solvers for QP running on AWS FPGAs
 ===
 
 ## Introduction
 
-## Launch F1 instance(s) on AWS
+## AWS Setup and Instance Launch
+Launch F1 instance(s) on AWS using this [Template](https://aws.amazon.com/marketplace/pp/prodview-zzeaoszfrkr7s)
 
-Use this [Template](https://aws.amazon.com/marketplace/server/fulfillment?ami=ami-09555423c1a04e06b&deliveryMethod=4ae9c97b-c3b4-4e41-bb8c-9f15164aaa71&productId=4ae9c97b-c3b4-4e41-bb8c-9f15164aaa71&ref_=cfg_full_continue&region=us-east-1&version=2999ded4-da1d-49bc-a07c-af3364cfb387)
+| Instance Type | Supported Parallel Solvers | USD per hour |
+|:---:|---|---|
+|f1.2xlarge | 3 | 1.65 |
+|f1.4xlarge | 6 | 3.30 |
+|f1.16xlarge | 24 | 13.20 |
+
+Click these buttons on Webpages 
+- Subscribe 
+- Continue to Configuration
+- Continue to Launch
+- Launch through EC2
+- Create/Select Key pair
+
+## Connect to the instance 
+### Login with the key pair
+`ssh -i "AC-CVXPY-RSA.pem" centos@ec2-3-236-136-102.compute-1.amazonaws.com`
+
+### Check the FPGA
+`source /opt/xilinx/xrt/setup.sh`
+
+`xbutil examine`
+
+### Upload the Github repo && cd repo
+
+### Setup miniconda for running the compiler 
+```
+sudo yum install wget
+mkdir -p ~/miniconda3
+wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
+bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
+rm -rf ~/miniconda3/miniconda.sh
+~/miniconda3/bin/conda init bash
+```
+
+`pip3 install -r requirements.txt`
+
+`make`
+
+```
+source /opt/xilinx/xrt/setup.sh
+./top-run.sh
+```
