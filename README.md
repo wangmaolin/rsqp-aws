@@ -19,7 +19,7 @@ Reconfigurable Solvers for QP running on AWS FPGAs
 	- Example uArch implemented on AWS VU9P FPGA `./temp/aws-1-aws-4000.xclbin` 
 		- too big to put on Github
 - Source program running on CPU
-	- `./aws/rsqp.cpp` download the compiled executable to FPGA
+	- `./aws/rsqp.cpp` download the compiled solver algorithm to FPGA
 
 # Other open-sourced components
 - QP benchmark generation from osqp_benchmark
@@ -30,10 +30,11 @@ Reconfigurable Solvers for QP running on AWS FPGAs
 CVXPYgen can use 
 - `./aws/rsqp.cpp` to call FPGA solver
 - `./aws/src_helper.py` to compile the problem data P, q, A, l, u to run on the FPGA solver 
+- `./aws/osqp_indirect.c` to compile other solver algorithms like conic solver to run on FPGA
 - interfaces for running batch QP solving with multiple solver instances on FPGA?
 - we can keep optimizing the underlying uArch on FPGA and keep the same  interfaces for CVXPYgen
 
-## AWS Setup and Instance Launch
+# AWS Setup and Instance Launch
 Launch F1 instance(s) on AWS using this [Template](https://aws.amazon.com/marketplace/pp/prodview-zzeaoszfrkr7s)
 
 | Instance Type | Maximum # of Parallel Solvers | USD per hour |
@@ -49,20 +50,20 @@ The example launch flow
 - Launch through EC2
 - Create/Select Key pair
 
-## Connect to the instance 
-### Login with the key pair
+# Connect to the instance 
+## Login with the key pair
 `ssh -i "AC-CVXPY-RSA.pem" centos@ec2-3-236-136-102.compute-1.amazonaws.com`
 
-### Check & Program FPGA
+## Check & Program FPGA
 `source /opt/xilinx/xrt/setup.sh`
 
 `xbutil examine`
 
 xbutil program --device 0000:00:1d.0 -u ./temp/test.awsxclbin 
 
-### Upload the Github repo && cd repo
+## Upload the Github repo && cd repo
 
-### Setup miniconda for running the compiler 
+## Setup miniconda for running the compiler 
 ```
 sudo yum install wget
 mkdir -p ~/miniconda3
@@ -76,7 +77,7 @@ rm -rf ~/miniconda3/miniconda.sh
 
 `make`
 
-### Test script
+## Test script
 ```
 source /opt/xilinx/xrt/setup.sh
 ./top-run.sh
