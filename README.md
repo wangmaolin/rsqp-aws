@@ -27,10 +27,10 @@ Reconfigurable Solvers for QP running on AWS FPGAs
 - pycparser
 
 # CVXPYgen integration plan
-CVXPYgen can use 
-- `./aws/rsqp.cpp` to call FPGA solver
-- `./aws/src_helper.py` to compile the problem data P, q, A, l, u to run on the FPGA solver 
-- `./aws/osqp_indirect.c` to compile other solver algorithms like conic solver to run on FPGA
+CVXPYgen can 
+- use `./aws/rsqp.cpp` to call FPGA solver
+- use `./aws/src_helper.py` to compile the problem data P, q, A, l, u to run on the FPGA solver 
+- write a different solver algorithm description like `./aws/osqp_indirect.c` to run other solver on FPGA
 - interfaces for running batch QP solving with multiple solver instances on FPGA?
 - we can keep optimizing the underlying uArch on FPGA and keep the same  interfaces for CVXPYgen
 
