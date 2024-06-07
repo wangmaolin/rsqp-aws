@@ -5,11 +5,21 @@ ARCH_CODE=sim
 HBM_PC=1
 CVB_SIZE=4000
 
-BITSTREAM=aws-$HBM_PC-aws-4000.xclbin
-xbutil program --device 0000:00:1d.0 -u ./temp/$BITSTREAM
+if [ `hostname` == "flatwhite" ]; then
+	# BITSTREAM=./temp/u280-1-ins1-4000.xclbin
+	# FPGA_ID=0
+	BITSTREAM=./temp/u50-1-ins1-4000.xclbin
+	FPGA_ID=1
+elif [ `hostname` == "labpc3" ]; then
+	BITSTREAM=./temp/u50-1-ins1-4000.xclbin
+	FPGA_ID=0
+else
+	BITSTREAM=./temp/aws-$HBM_PC-aws-4000.awsxclbin
+	FPGA_ID=0
+fi
 
-# APP_NAME=SVM
-APP_NAME=Control
+APP_NAME=SVM
+# APP_NAME=Control
 # APP_NAME=Lasso
 # APP_NAME=Huber
 # APP_NAME=Portfolio
@@ -17,16 +27,19 @@ APP_NAME=Control
 SCALE_IDX=0
 # SCALE_IDX=8
 
-# ALGO_SRC=./aws/osqp_indirect.c
+ALGO_SRC=./aws/osqp_indirect.c
 # DEBUG_VAR=test_out
-# DEBUG_VAR=none
+DEBUG_VAR=none
 
-ALGO_SRC=./aws/ut_spmv.c
+# ALGO_SRC=./aws/ut_spmv.c
 # ALGO_SRC=./aws/ut_vecop.c
-DEBUG_VAR=test_out
+# DEBUG_VAR=test_out
 
 GROUND_TRUTH=$DEBUG_VAR
 
+# clean temp
+# rm -f ./temp/*.png
+rm -f ./temp/*.pdf
 rm -f ./temp/*.fpga
 rm -f ./temp/*.csv
 
@@ -49,7 +62,7 @@ if [ -z "$SW_FILE" ]; then
     exit 0
 fi
 
-./fpga-solve.sh -sw=$SW_FILE -hw=$BITSTREAM
+./rsqp -p ./temp/$SW_FILE -x $BITSTREAM -d 1
 SIM_RESULT_DIR="./temp"
 
 python ./aws/reg_val_check.py\

@@ -21,19 +21,22 @@ def Setup_SpMV(cu_dict, qp_problem, scalars):
 	compileP = DragonC10(qp_problem['P'].tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
-					 pdimMax=scalars['pdim_max'])
+					 pdimMax=scalars['pdim_max'],
+					 plotName='P')
 	cu_dict['P_multiply'] = compileP.top_pass()
 
 	compileA = DragonC10(qp_problem['A'].tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
-					 pdimMax=scalars['pdim_max'])
+					 pdimMax=scalars['pdim_max'],
+					 plotName='A')
 	cu_dict['A_multiply'] = compileA.top_pass()
 
 	compileAtrans = DragonC10(qp_problem['A'].T.tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
-					 pdimMax=scalars['pdim_max'])
+					 pdimMax=scalars['pdim_max'],
+					 plotName='Atrans')
 	cu_dict['At_multiply'] = compileAtrans.top_pass()
 
 def Setup_Constr(cu_dict, qp_problem):
@@ -63,9 +66,9 @@ def osqp_indirect(cu_dict, qp_problem, scalars):
 
 	Setup_SpMV(cu_dict, qp_problem, scalars)
 	Setup_Constr(cu_dict, qp_problem)
+
 	""" Debug PCG """
 	# Check_PCG(cu_dict, qp_problem, scalars, diag_PsI, diag_AtA)
-
 	# zero_vec = np.zeros(scalars['pdim_n']).astype(np.float32)
 	# save_to_debug(zero_vec, 'test_out')
 
@@ -83,6 +86,14 @@ def ut_spmv(cu_dict, qp_problem, scalars):
 	SpMat = scipy.sparse.csr_matrix((scalars['pdim_n'], scalars['pdim_n']))
 	for rowItem in range(scalars['pdim_n']):
 		SpMat[rowItem, :rowItem]=np.ones(rowItem)
+	spmv_in = np.ones(scalars['pdim_n']).astype(np.float32)
+	"""
+
+	""" All dense block
+	SpMat = scipy.sparse.csr_matrix((scalars['pdim_n'], scalars['pdim_n']))
+	blockSize=242 # error 14
+	for rowItem in range(1):
+		SpMat[rowItem, :blockSize]=np.ones(blockSize)*0.1
 	spmv_in = np.ones(scalars['pdim_n']).astype(np.float32)
 	"""
 
@@ -111,7 +122,8 @@ def ut_spmv(cu_dict, qp_problem, scalars):
 	o3issue = DragonC10(SpMat.tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
-					 pdimMax=scalars['pdim_max'])
+					 pdimMax=scalars['pdim_max'],
+					 plotName='ut')
 	cu_dict['SpMat'] = o3issue.top_pass()
 
 def ut_vecop(cu_dict, qp_problem, scalars):

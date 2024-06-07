@@ -19,22 +19,17 @@ def top_5_diff(a, b, diff):
 def check_diff(a, b, var_name):
 	if len(a)<len(b):
 		a = np.pad(a, (0, len(b)-len(a)), mode='constant')
-	"""
-	if len(a)>len(b):
-		# a = a[::16]
-		b = np.pad(b, (0, len(a)-len(b)), mode='constant')
-	"""
 		
 	# Calculate the maximum absolute difference
 	abs_diff = np.abs(a - b)
 	max_abs_diff = np.max(abs_diff)
-	print("Maximum absolute difference:", max_abs_diff)
+	print("Maximum absolute difference: {:.2e}".format(max_abs_diff))
 	top_5_diff(a, b, abs_diff)
 
 	# Calculate the maximum relative difference
 	rel_diff = np.abs(np.divide(a - b, a, out=np.zeros_like(a), where=a!=0))
 	max_rel_diff = np.max(np.abs(rel_diff))
-	print("Maximum relative difference:", max_rel_diff)
+	print("Maximum relative difference: {:.2e}".format(max_rel_diff))
 	top_5_diff(a, b, rel_diff)
 
 	plt.subplot(2,2,1)

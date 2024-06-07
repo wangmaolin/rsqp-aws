@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
     sda::utils::CmdLineParser parser;
     parser.addSwitch("--xclbin_file", "-x", "input binary file string", "./proc.xclbin");
     parser.addSwitch("--program_name", "-p", "accelerator programm", "./cosim.fpga");
+    parser.addSwitch("--device_id", "-d", "Device ID", "0");
     parser.parse(argc, argv);
 
     /* read accelerator program */
@@ -46,29 +47,30 @@ int main(int argc, char** argv) {
     cl::CommandQueue cmd_queue;
     cl::Kernel cu_krnl;
 
-    std::string binaryFile(parser.value("xclbin_file"));
+    //Setup Profile Start
+    std::chrono::duration<double> setup_time(0);
+    auto setup_start = std::chrono::high_resolution_clock::now();
+
     auto devices = xcl::get_xil_devices();
+    std::string binaryFile(parser.value("xclbin_file"));
     auto fileBuf = xcl::read_binary_file(binaryFile);
     cl::Program::Binaries bins{{fileBuf.data(), fileBuf.size()}};
-    bool valid_device = false;
-    for (unsigned int i = 0; i < devices.size(); i++) {
-        auto device = devices[i];
-        OCL_CHECK(hw_err, context = cl::Context(device, nullptr, nullptr, nullptr, &hw_err));
-        OCL_CHECK(hw_err, cmd_queue = cl::CommandQueue(context, device, cl::QueueProperties::Profiling | cl::QueueProperties::OutOfOrder, &hw_err));
 
-        program = cl::Program(context, {device}, bins, nullptr, &hw_err);
-        if (hw_err != CL_SUCCESS) {
-            std::cout << "Failed to program device[" << i << "] with xclbin file!\n";
-        } else {
-            // std::cout << "Device[" << i << "]: program successful!\n";
-            valid_device = true;
-            break; // we break because we found a valid device
-        }
-    }
-    if (!valid_device) {
-        std::cout << "Failed to program any device found, exit!\n";
-        exit(EXIT_FAILURE);
-    }
+    auto device = devices[parser.value_to_int("device_id")];
+    OCL_CHECK(hw_err, context = cl::Context(device, nullptr, nullptr, nullptr, &hw_err));
+    OCL_CHECK(hw_err, cmd_queue = cl::CommandQueue(context, device, cl::QueueProperties::OutOfOrder, &hw_err));
+    program = cl::Program(context, {device}, bins, nullptr, &hw_err);
+
+    /* Setup Profile End */
+    auto setup_end= std::chrono::high_resolution_clock::now();
+    setup_time = std::chrono::duration<double>(setup_end - setup_start);
+    std::cout << "FPGA setup time:  "<<
+    std::setprecision(2) << std::scientific
+    << setup_time.count()<<"s"<<std::endl;
+
+    /* Data Transfer Profile Start */
+    std::chrono::duration<double> dt_time(0);
+    auto dt_start = std::chrono::high_resolution_clock::now();
 
     std::string cu_id = std::to_string(1);
     std::string cu_krnls_name_full = std::string("cu_top")+ std::string(":{") + std::string("cu_top_") + cu_id + std::string("}");
@@ -130,6 +132,13 @@ int main(int argc, char** argv) {
     OCL_CHECK(hw_err, hw_err = cu_krnl.setArg(krnlArgCount++,
                                               0));
 
+    /* Data Transfer End */
+    auto dt_end = std::chrono::high_resolution_clock::now();
+    dt_time = std::chrono::duration<double>(dt_end - dt_start);
+    std::cout << "Data Transfer time:  "<<
+    std::setprecision(2) << std::scientific
+    << dt_time.count()<<"s"<<std::endl;
+
     //Profiling
     double kernel_time_in_sec = 0;
     std::chrono::duration<double> kernel_time(0);
@@ -140,7 +149,7 @@ int main(int argc, char** argv) {
     kernel_time = std::chrono::duration<double>(kernel_end - kernel_start);
     kernel_time_in_sec = kernel_time.count();
     /* run time in second */
-    std::cout << "run time:  "<<
+    std::cout << "FPGA run time:  "<<
     std::setprecision(2) << std::scientific
     << kernel_time_in_sec<<"s"<<std::endl;
 

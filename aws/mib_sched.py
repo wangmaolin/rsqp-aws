@@ -12,14 +12,20 @@ import matplotlib.pyplot as plt
 from networkx.drawing.nx_pydot import graphviz_layout
 from utils import omega_rwc_bitwidth
 
+logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
+
+def contains_number(list_of_numbers, target_number):
+	""" Function to check if a number appears in the list"""
+	return target_number in list_of_numbers
+
 class DragonC10:
 	""" O3 Instruction Scheduling Based on Dragon Book Chapter 10 """
 	def __init__(self, 
 			  csr_mat, 
 			  iscaC, 
 			  readOffset,
-			  pdimMax
-			  ):
+			  pdimMax,
+			  plotName='fig'):
 		self.mat = csr_mat
 		self.iscaC = iscaC
 		self.readOffset = readOffset
@@ -34,7 +40,10 @@ class DragonC10:
 		""" U280 Total II delay """
 		pipeIIdelay={16:43, 32: 51, 64:51}
 		assert iscaC in pipeIIdelay
+		""" Instruction Scheduling Delay for True Dependency """
 		self.pipeDelay = pipeIIdelay.get(iscaC)
+		""" Instruction Scheduling Delay for Anti Dependency """
+		self.antiDelay = -self.pipeDelay+9
 
 		self.rrIndices=[]
 		self.mulsREmit=[]
@@ -44,7 +53,7 @@ class DragonC10:
 		self.ddNxG = nx.DiGraph()
 		""" Instruction Property Table """
 		self.ddDf = pd.DataFrame(
-			columns=['Terminal', 'tempWrite'])
+			columns=['Terminal', 'tempWrite', 'Read'])
 
 		ctrlBW, readBW, writeBW, _ = omega_rwc_bitwidth(self.pipeStage)
 		assert readBW == writeBW
@@ -52,29 +61,31 @@ class DragonC10:
 		self.readBitShift = ctrlBW
 		self.writeBitShift = ctrlBW + readBW
 
+		self.plotName = plotName
+
 	def pStack_ptr(self, idxTerm):
 		if idxTerm not in self.TermStack:
 			self.TermStack.append(idxTerm)
 		return self.psumPool + self.TermStack.index(idxTerm)
 
-	def match_node(self, idxTerm, prevWrite):
-		df = self.ddDf
-		matching_indices = df[(df['Terminal'] == idxTerm) & (df['tempWrite'] == prevWrite)].index.tolist()
-		return matching_indices
-
-	def depend_src(self, idxTerm, currWrite, instID):
-		""" Write op: Source of data dependency 
-			Used NX and DF for Analysis, Convert to Dot for visualize """
-		self.ddNxG.add_node(instID)
-		df_insert_row(self.ddDf, [idxTerm, currWrite])
-
-	def depend_dst(self, idxTerm, prevWrite, instID,):
-		""" Read op: Destination of data dependency """
-		matches = self.match_node(idxTerm, prevWrite)
+	def true_dependency(self, idxTerm, prevResult, instID):
+		def match_RbW(df):
+			matching_indices = df[(df['Terminal'] == idxTerm) & (df['tempWrite'] == prevResult)].index.tolist()
+			return matching_indices
+		matches = match_RbW(self.ddDf)
 		if len(matches)>0:
-			# print((idxTerm, prevWrite), 'match', matches,(idxTerm, instID))
-			self.ddNxG.add_edge(matches[-1], instID) 
-			#    weight=self.pipeStage)
+			self.ddNxG.add_edge(matches[-1], instID, 
+					   weight=self.pipeDelay) 
+
+	def anti_dependency(self, currWrite, instID):
+		def match_WbR(df):
+			df = self.ddDf['Read'].apply(lambda x: contains_number(x, currWrite))
+			matching_indices = df[(df == True)].index.tolist()
+			return matching_indices
+		matches = match_WbR(self.ddDf)
+		if len(matches)>0:
+			self.ddNxG.add_edge(matches[-1], instID,
+					   weight=self.antiDelay) 
 
 	def addr_1d_2d(self, addr_1d):
 		bank_num = addr_1d % self.iscaC
@@ -89,11 +100,40 @@ class DragonC10:
 		cvt_temp = np.array([idx]).view(np.uint8)
 		return np.unpackbits(cvt_temp, bitorder = 'little')[:self.pipeStage]
 
-	def draw_dep_sched(self, instSched):
-		""" Plot Graph """
+	def plot_pattern(self):
+		plt.figure()
+		plt.spy(self.mat, 
+			 markersize=1, 
+			marker='.',
+			markeredgecolor='black',
+			markerfacecolor='black')
+		plt.xticks([],[])
+		plt.yticks([],[])
+		plt.title('Sparse Pattern')
+		plt.savefig('./temp/Pattern-'+self.plotName+'.png')
+		"""
+		_ , axs = plt.subplots(1, 2, figsize=(4,2),
+							   gridspec_kw={'width_ratios': [1, 1]})
+		axs = axs.flatten()
+		axs[0].spy(self.mat, 
+			 markersize=1, 
+			marker='.',
+			markeredgecolor='black',
+			markerfacecolor='black')
+		axs[0].set_xticks([],[])
+		axs[0].set_yticks([],[])
+		axs[0].set_title('Sparse Pattern')
+		"""
+
+	def plot_dependency(self):
+		plt.figure()
 		copyG = self.ddNxG.copy()
 		isolated_nodes = [node for node, degree in dict(copyG.degree()).items() if degree == 0]
 		copyG.remove_nodes_from(isolated_nodes)
+
+		logging.debug("Dependency Graph %d nodes %d edges", 
+				copyG.number_of_nodes(),
+				copyG.number_of_edges())
 
 		# graphLayout = nx.spring_layout(copyG, k=0.8)
 		# graphLayout = graphviz_layout(copyG, "twopi")
@@ -101,14 +141,32 @@ class DragonC10:
 		# graphLayout = graphviz_layout(copyG, "fdp")
 		graphLayout = graphviz_layout(copyG, "sfdp")
 
+		# Scale to avoid overlap
+		layoutScale = 1.0 
+		graphLayout= {node: (x + layoutScale * i, y + layoutScale * i) 
+				for i, (node, (x, y)) in enumerate(graphLayout.items())}
+		# Set node sizes based on their degree
+		nodeSizes = [copyG.degree(node) * 10 for node in copyG.nodes()]
 		nx.draw(copyG, 
 		  graphLayout,
+		  node_size = nodeSizes,
+		  font_size = 6,
 		  with_labels=True, 
 		  node_color='skyblue', 
 		  edge_color='gray', 
 		  alpha=0.7)
-		plt.savefig('./temp/ddNxG.png')
+		#   ax=axs[1])
 
+		edgeLabels = nx.get_edge_attributes(copyG, 'weight')
+		nx.draw_networkx_edge_labels(
+			copyG, 
+			graphLayout, 
+		  	font_size = 6,
+			edge_labels=edgeLabels)
+
+		plt.savefig('./temp/Dependency-'+self.plotName+'.png')
+
+	def plot_sched(self):
 		""" Plot the schedule with Stage Graph """
 		"""
 		slotMap = [np.where(instSched == slot)[0] 
@@ -119,7 +177,9 @@ class DragonC10:
 			if idx >10:
 				break
 		"""
-		# plt.savefig('./temp/instSched.png')
+		# Set the aspect ratio to ensure equal height for all subplots
+		# plt.subplots_adjust(wspace=0.4, hspace=0.1)
+		# plt.gca().set_box_aspect(1)
 
 	def top_pass(self):
 		# s_in = itertools.islice(self.row_stream(), 20)
@@ -131,6 +191,7 @@ class DragonC10:
 			lambda x: map(self.Psum_reduce, x),
 			itertools.chain.from_iterable,
 			enumerate,
+			# lambda x: map(self.log_stream,x), # DEBUG
 			lambda x: map(self.ddDotG_rrTable_build, x),
 		)
 		""" Apply pass """
@@ -139,11 +200,14 @@ class DragonC10:
 		"""	Form the graph and table constraints """
 		rrTable, routeCtrl = self.sched_constrain()
 
+		""" Draw the schedule result """
+		self.plot_dependency()
+		self.plot_pattern()
+		self.ddDf.to_csv('./temp/ddDf.csv')
+
+		# instSched = self.base_sched(rrTable)
 		""" List schedule in the Dragon book """
 		instSched = self.list_sched(rrTable)
-
-		""" Draw the schedule result """
-		# self.draw_dep_sched(instSched)
 
 		hbmMul = self.code_gen(instSched, routeCtrl)
 
@@ -214,8 +278,11 @@ class DragonC10:
 			assert (self.addrsRemit[rIdx] < self.capacityOfRF).all()
 
 		""" horizonal concate """
-		# return np.concatenate((hbmMul, hbmInst.view(np.float32)), axis=1)
 		return np.hstack((hbmMul, hbmInst.view(np.float32)))
+
+	def log_stream(self, recordIn):
+		print(recordIn)
+		return recordIn
 
 	def row_stream(self):
 		for idxTerm in range(self.mat.shape[0]):
@@ -367,14 +434,21 @@ class DragonC10:
 		addrW = recordIn[1][4]
 		idxTerm = recordIn[1][5]
 
+		""" Solve true dependency (Read before Write, RbW) and
+			anti dependency (Write before Read, WbR) """
 		currWrite = self.addr_2d_1d(writeRF, addrW)
-		""" Check idxTerms and add Nodes """
-		self.depend_src(idxTerm, currWrite, instID)
+		self.ddNxG.add_node(instID)
 
-		""" check indicesR and add Edges """
+		""" Add edges for RbW """
 		indicesR = self.addr_2d_1d(readRFs, addrsR)
-		for prevWrite in indicesR:
-			self.depend_dst(idxTerm, prevWrite, instID)
+		for prevResult in indicesR:
+			self.true_dependency(idxTerm, prevResult, instID)
+
+		""" Look for WbR of current result """
+		self.anti_dependency(currWrite, instID)
+
+		""" Add current write for later true dependency """
+		df_insert_row(self.ddDf, [idxTerm, currWrite, indicesR])
 
 		""" Used for build resource reservation table """
 		self.rrIndices.append((readRFs, writeRF))
@@ -382,13 +456,23 @@ class DragonC10:
 		self.addrsRemit.append(addrsR)
 		self.addrWemit.append(addrW)
 
+	def base_sched(self, rrTable):
+		""" Don't do compression at all """
+		instCount = rrTable.shape[0]
+		instSched = np.ones(instCount, dtype=np.uint32)*-1
+		instSched[0] = 0
+		for instItem in range(1, instCount):
+			instSched[instItem] = instSched[instItem-1] + self.pipeDelay
+		assert (instSched>=0).all()
+		return instSched
+
 	def list_sched(self, rrTable):
 		instCount = rrTable.shape[0]
 		resourceWidth = rrTable.shape[1]
 		instSched = np.ones(instCount, dtype=np.uint32)*-1
 		""" Leave redundancy due to pipeline delay """
 		condense_bitmap = np.zeros(
-			(instCount+self.pipeDelay*2, resourceWidth), 
+			(instCount, resourceWidth), 
 			dtype=bool) 
 
 		for instItem in range(instCount):
@@ -398,15 +482,25 @@ class DragonC10:
 			if len(InstParents) > 0:
 				assert all(x >= 0 for x in instSched[InstParents]),\
 					print('Parent not scheduled yet:', 
-							instSched[InstParents])
-				earliestSlot = max(instSched[InstParents])+ self.pipeDelay
+							instSched[InstParents], InstParents)
+				incomingEdges = self.ddNxG.in_edges(instItem, data='weight')
+				edgeDelay = [weight for _, _, weight in incomingEdges]
+				earliestSlot = max(instSched[InstParents]+edgeDelay)
 			else:
 				earliestSlot = 0
 			""" Test the fit of all possible locations """
 			bit_map_single = rrTable[instItem,:]
+			""" Grow bitmap if schedule overflow """
+			schedGrow=earliestSlot-condense_bitmap.shape[0]-1
+			if schedGrow>0:
+				condense_bitmap = np.concatenate(
+					(condense_bitmap, 
+	  				np.zeros((schedGrow+3, resourceWidth), dtype=bool)),
+					axis=0)
 			bit_map_after_merge = np.logical_and(
 				condense_bitmap[earliestSlot:,:], 
 				bit_map_single)
+
 			""" Select the first fit"""
 			firstFitSlot = np.where(np.any(bit_map_after_merge, axis=1) == False)[0][0] + earliestSlot
 			instSched[instItem] = firstFitSlot
