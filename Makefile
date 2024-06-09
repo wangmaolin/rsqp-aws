@@ -1,42 +1,31 @@
-#
-# Copyright 2019-2021 Xilinx, Inc.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# makefile-generator v1.0.3
-#
-
-#Setting CXX
 CXX := g++
-HOST_ARCH := x86
 
-include ./aws/includes/opencl/opencl.mk
+xrt_path = $(XILINX_XRT)
+OPENCL_INCLUDE:= $(xrt_path)/include
+
+VIVADO_INCLUDE:= $(XILINX_VIVADO)/include
+opencl_CXXFLAGS=-I$(OPENCL_INCLUDE) -I$(VIVADO_INCLUDE)
+OPENCL_LIB:= $(xrt_path)/lib
+opencl_LDFLAGS=-L$(OPENCL_LIB) -lOpenCL -pthread
+
 CXXFLAGS += $(opencl_CXXFLAGS) -Wall -O0 -g -std=c++1y
 LDFLAGS += $(opencl_LDFLAGS)
 
-############################## Setting up Host Variables ##############################
 #Include Required Host Source Files
 CXXFLAGS += -I./aws/includes/xcl2
 CXXFLAGS += -I./aws/includes/cmdparser
 CXXFLAGS += -I./aws/includes/logger
-HOST_SRCS += ./aws/includes/xcl2/xcl2.cpp \
-		./aws/includes/cmdparser/cmdlineparser.cpp \
-		./aws/includes/logger/logger.cpp \
-		./aws/rsqp.cpp
+CXXFLAGS += -I./aws/includes
+
+HOST_SRCS += ./aws/includes/xcl2/xcl2.cpp
+HOST_SRCS += ./aws/includes/cmdparser/cmdlineparser.cpp
+HOST_SRCS += ./aws/includes/logger/logger.cpp 
+HOST_SRCS += ./aws/rsqp.cpp
+HOST_SRCS += ./aws/osqp_api.c
+
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
 LDFLAGS += -lrt -lstdc++ 
-
-############################## Setting up Kernel Variables ##############################
 
 EXECUTABLE = ./rsqp
 

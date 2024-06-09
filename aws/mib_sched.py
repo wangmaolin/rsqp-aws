@@ -201,9 +201,9 @@ class DragonC10:
 		rrTable, routeCtrl = self.sched_constrain()
 
 		""" Draw the schedule result """
-		self.plot_dependency()
-		self.plot_pattern()
-		self.ddDf.to_csv('./temp/ddDf.csv')
+		# self.plot_dependency()
+		# self.plot_pattern()
+		# self.ddDf.to_csv('./temp/ddDf.csv')
 
 		# instSched = self.base_sched(rrTable)
 		""" List schedule in the Dragon book """

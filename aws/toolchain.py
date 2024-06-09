@@ -27,8 +27,9 @@ def main():
 	cu_dict = {}
 
 	""" Future Release Inteface: qp_problem P, q, A, l, u """
-	qp_problem = problem_instance_gen(test_problem_name = args.app_name, 
-								   dim_idx = args.scale_idx)
+	qp_problem = problem_instance_gen(
+		test_problem_name = args.app_name, 
+		dim_idx = args.scale_idx)
 
 	scalars={'sigma':1e-6,
 			'rho':0.1 }

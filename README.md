@@ -1,7 +1,47 @@
 Reconfigurable Solvers for QP running on AWS FPGAs
 ===
+# Python Interface 
+Example: `./aws/osqp_api.py`
+```
+prob = osqpFPGA()
+prob.setup(P = qp_problem['P'],
+		q = qp_problem['q'],
+		A = qp_problem['A'],
+		l = qp_problem['l'],
+		u = qp_problem['u'])
+prob.solve()
+```
 
-# Core components
+# C Interface 
+WIP
+
+# Deployment 
+We support on premise and AWS deployment with the following FPGA models:
+
+| Instance Type | U50 | U280 | f1.2xlarge| f1.4xlarge| f1.16xlarge|
+|:---:|---|---|---|---|---|
+| Solver Cores | 16 | 32 | 7 | 14 | 56 |
+
+## Example setup on AWS 
+Launch an F1 instance with [FPGA Developer AMI](https://aws.amazon.com/marketplace/pp/prodview-gimv3gqbpe57k), 
+then connect to the instance with the key pair 
+
+`ssh -i "keyfile.pem" centos@ec2-hostIP.compute-1.amazonaws.com`
+
+Clone this repo and run `./setup.sh` to 
+- install the dependency 
+- compile the host program
+- program FPGA with bitstream
+
+Setup environment variables
+```
+$ source $AWS_FPGA_REPO_DIR/vitis_runtime_setup.sh
+$ source /opt/xilinx/xrt/setup.sh
+```
+
+Run the python interface example `python ./aws/osqp_api.py`
+
+# Code Structure 
 - Source program running on FPGA
 	- OSQP indirect `./aws/osqp_indirect.c`
 	- unit test `./aws/ut_spmv.c`, etc.
@@ -21,77 +61,9 @@ Reconfigurable Solvers for QP running on AWS FPGAs
 - Source program running on CPU
 	- `./aws/rsqp.cpp` download the compiled solver algorithm to FPGA
 
-# Other open-sourced components
-- QP benchmark generation from osqp_benchmark
-	- `./aws/benchmark_gen.py`, `./aws/control.py`, etc.
-- pycparser
-
-# CVXPYgen integration plan
-CVXPYgen can 
-- use `./aws/rsqp.cpp` to call FPGA solver
-- use `./aws/src_helper.py` to compile the problem data P, q, A, l, u to run on the FPGA solver 
-- write a different solver algorithm description like `./aws/osqp_indirect.c` to run other solver on FPGA
-- interfaces for running batch QP solving with multiple solver instances on FPGA?
-- we can keep optimizing the underlying uArch on FPGA and keep the same  interfaces for CVXPYgen
-
-# AWS Setup and Instance Launch
-Launch F1 instance(s) on AWS using this [Template](https://aws.amazon.com/marketplace/pp/prodview-zzeaoszfrkr7s)
-
-| Instance Type | Maximum # of Parallel Solvers | USD per hour |
-|:---:|---|---|
-|f1.2xlarge | 7 | 1.65 |
-|f1.4xlarge | 14 | 3.30 |
-|f1.16xlarge | 56 | 13.20 |
-
-The example launch flow 
-- Subscribe to the AMI
-- Continue to Configuration
-- Continue to Launch
-- Launch through EC2
-- Create/Select Key pair
-
-# Connect to the instance 
-## Login with the key pair
-`ssh -i "AC-CVXPY-RSA.pem" centos@ec2-3-236-136-102.compute-1.amazonaws.com`
-
-## Check & Program FPGA
-`source /opt/xilinx/xrt/setup.sh`
-
-`xbutil examine`
-
-xbutil program --device 0000:00:1d.0 -u ./temp/test.awsxclbin 
-
-## Upload the Github repo && cd repo
-
-## Setup miniconda for running the compiler 
-```
-sudo yum install wget
-mkdir -p ~/miniconda3
-wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -O ~/miniconda3/miniconda.sh
-bash ~/miniconda3/miniconda.sh -b -u -p ~/miniconda3
-rm -rf ~/miniconda3/miniconda.sh
-~/miniconda3/bin/conda init bash
-```
-
-`pip3 install -r requirements.txt`
-
-`make`
-
-## Test script
-```
-source /opt/xilinx/xrt/setup.sh
-./top-run.sh
-```
-
-This script will 
-- install the dependency
-- compile host program
-- compile example SVM/LASSO problem data to the FPGA program
-- run the FPGA solver and copy the solution back to `./temp/`
-
 # Acknowledgement
 
-This work is based on the following works:
+This repo is based on the following research and open sourced projects:
 ```
 @article{osqp,
   author  = {Stellato, B. and Banjac, G. and Goulart, P. and Bemporad, A. and Boyd, S.},
@@ -112,5 +84,9 @@ This work is based on the following works:
   pages={1--12},
   year={2023}
 }
-
 ```
+
+- QP benchmark generation from osqp_benchmark
+	- `./aws/benchmark_gen.py`, `./aws/control.py`, etc.
+- pycparser
+- osqp C API
