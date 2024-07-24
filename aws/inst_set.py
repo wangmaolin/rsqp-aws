@@ -293,11 +293,9 @@ class Compiler(c_ast.NodeVisitor):
 					   beta_addr,
 					   src_tetris_addr,
 					   src_vf_addr,
-					   dst_sel_tetris,
 					   dst_addr,
 					   op_type,
 					   gamma_addr,
-					   cond_sel_lhs,
 					   pack_size,
 					   program_end=False):
 		""" generate the instruction for ax plus by instruction """
@@ -306,11 +304,9 @@ class Compiler(c_ast.NodeVisitor):
 			(beta_addr<<6) +\
 			(src_tetris_addr<<12) +\
 			(src_vf_addr<<18) +\
-			(dst_addr<<24) +\
-			(dst_sel_tetris<<30)
+			(dst_addr<<24)
 		op2 = op_type +\
-			(gamma_addr<<6) +\
-			(cond_sel_lhs<<12) 
+			(gamma_addr<<6) 
 		op3 = pack_size
 		self.add_inst([op0, op1, op2, op3], program_end)
 
@@ -861,11 +857,9 @@ class Compiler(c_ast.NodeVisitor):
 									beta_addr=beta_addr,
 									src_tetris_addr=0,
 									src_vf_addr=src_rhs_addr,
-									dst_sel_tetris=0,
 									dst_addr=dst_addr,
 									op_type=op_type,
 									gamma_addr=0,
-									cond_sel_lhs=0,
 									pack_size=self.unified_vec_pack_len)
 
 			if row['inst_type'] == 'axpby-reci':
@@ -881,11 +875,9 @@ class Compiler(c_ast.NodeVisitor):
 									beta_addr=0,
 									src_tetris_addr=reci_addr,
 									src_vf_addr=reci_addr,
-									dst_sel_tetris=0,
 									dst_addr=dst_addr,
 									op_type=op_type,
 									gamma_addr=0,
-									cond_sel_lhs=0,
 									pack_size=self.unified_vec_pack_len)
 
 			if row['inst_type'] == 'axpby-setcond':
@@ -908,11 +900,9 @@ class Compiler(c_ast.NodeVisitor):
 									beta_addr=beta_addr,
 									src_tetris_addr=cond_addr,
 									src_vf_addr=cond_addr,
-									dst_sel_tetris=0,
 									dst_addr=dst_addr,
 									op_type=op_type,
 									gamma_addr=gamma_addr,
-									cond_sel_lhs=0,
 									pack_size=self.unified_vec_pack_len)
 
 			if row['inst_type'] == 'calc_norm_inf':

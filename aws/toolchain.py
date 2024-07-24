@@ -42,7 +42,6 @@ def main():
 		scalars['ori_dim_n'],
 		isca_c)
 	scalars['pdim_max']=max(scalars['pdim_m'], scalars['pdim_n'])
-	cvb_capacity = 2 + 2*(scalars['pdim_m']+scalars['pdim_n'])//isca_c
 	func_name=os.path.basename(args.src_file).split('.')[0]
 	helper_func=getattr(src_helper, func_name)
 	helper_func(cu_dict, qp_problem, scalars)
@@ -69,12 +68,7 @@ def main():
 
 	o_compiler.init_values()
 
-	file_name = args.output_dir+'/'+args.app_name.lower().replace(" ", "")\
-		+'-s' +str(args.scale_idx)\
-		+'-'+str(args.hbm_pc)\
-		+'-'+args.arch_code\
-		+'-'+str(cvb_capacity)\
-		+'.fpga'
+	file_name = args.output_dir+'/test.fpga'
 	o_compiler.write_elf(file_name)
 	print('write elf to {}'.format(file_name))
 

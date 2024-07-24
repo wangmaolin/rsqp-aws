@@ -168,8 +168,6 @@ void main()
 		load_cvb(xtilde_view, any_1, sol_1);
 		omega_net(A_multiply, any_0);
 		cvb_write(ztilde_view, any_0, con_1);
-		// ew_prod(ztilde_view, rho_inv_vec, ztilde_view); 
-		// ztilde_view = ztilde_view + ztilde_rhs;
 
 		/* ----- update_x() in osqp_api.c ------ */
 		work_x = alpha * xtilde_view + one_minus_alpha * prev_x;

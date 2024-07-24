@@ -103,10 +103,10 @@ def main():
 		bitstream='./temp/u280-1-ins1-4000.xclbin')
 
 	prob.setup(P = qp_problem['P'],
-			q =  qp_problem['q'],
-			A =  qp_problem['A'],
-			l =  qp_problem['l'],
-			u =  qp_problem['u'])
+			q = qp_problem['q'],
+			A = qp_problem['A'],
+			l = qp_problem['l'],
+			u = qp_problem['u'])
 
 	prob.solve()
 

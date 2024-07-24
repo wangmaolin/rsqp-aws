@@ -3,7 +3,14 @@ import numpy as np
 import logging
 
 import scipy.sparse
-from mib_sched import DragonC10
+from mib_sched import MatMulSched
+from mib_sched import ShuffleMulSched
+from mib_sched import LsolveSched
+from mib_sched import UsolveSched
+
+import scipy.sparse as spa
+import numpy as np
+import qdldl
 
 def check_empty_rows(mat):
 	nnz_along_row = mat.getnnz(axis=1)
@@ -18,21 +25,23 @@ def Setup_SpMV(cu_dict, qp_problem, scalars):
 	check_empty_rows(qp_problem['A'])
 	check_empty_rows(qp_problem['A'].T)
 
-	compileP = DragonC10(qp_problem['P'].tocsr(), 
+	compileP = MatMulSched(qp_problem['P'].tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
 					 pdimMax=scalars['pdim_max'],
 					 plotName='P')
 	cu_dict['P_multiply'] = compileP.top_pass()
 
-	compileA = DragonC10(qp_problem['A'].tocsr(), 
+	# logging.debug('----- Matrix A Start ----')
+	compileA = MatMulSched(qp_problem['A'].tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
 					 pdimMax=scalars['pdim_max'],
 					 plotName='A')
 	cu_dict['A_multiply'] = compileA.top_pass()
+	# logging.debug('----- Matrix A End ----')
 
-	compileAtrans = DragonC10(qp_problem['A'].T.tocsr(), 
+	compileAtrans = MatMulSched(qp_problem['A'].T.tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
 					 pdimMax=scalars['pdim_max'],
@@ -119,7 +128,7 @@ def ut_spmv(cu_dict, qp_problem, scalars):
 	cu_dict['zero_vec'] = np.zeros(scalars['pdim_max']).astype(np.float32)
 
 	""" Functional style scheduling """
-	o3issue = DragonC10(SpMat.tocsr(), 
+	o3issue = MatMulSched(SpMat.tocsr(), 
 					 iscaC=scalars['isca_c'], 
 					 readOffset=scalars['pdim_max'], 
 					 pdimMax=scalars['pdim_max'],
@@ -190,3 +199,154 @@ def Check_PCG(cu_dict, qp_problem, scalars, diag_PsI, diag_AtA):
 	# pcg_sol = pcg_computed_rhs
 	# pcg_Kx = KKT_mat @ pcg_computed_rhs
 	# + sigma * pcg_computed_rhs+rho*A.transpose()*A*pcg_computed_rhs
+
+def Shift_AMD(amd_order, scalars):
+	""" Pad the order """
+	inc_mask = (amd_order >= scalars['ori_dim_n'])
+	amd_order[inc_mask] += scalars['n_padding']
+
+	permutate_offset = scalars['pdim_m'] + scalars['pdim_n']
+	amd_order += permutate_offset
+	return amd_order
+
+def Setup_LDL_Perm(cu_dict, scalars, amd_order):
+	natural_order = np.arange(scalars['ori_dim_n']+scalars['ori_dim_m'])
+	muls=np.ones(scalars['ori_dim_n']+scalars['ori_dim_m']).astype(np.float32)
+	CompilerPerm = ShuffleMulSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		srcOrder=amd_order,
+		dstOrder=natural_order,
+		muls=muls)
+	cu_dict['Perm'] = CompilerPerm.top_pass()
+
+	CompilerInvPerm = ShuffleMulSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		srcOrder=natural_order,
+		dstOrder=amd_order,
+		muls=muls)
+	cu_dict['Perm_inv'] = CompilerInvPerm.top_pass()
+
+def ut_perm(cu_dict, qp_problem, scalars):
+	natural_order = np.arange(scalars['ori_dim_n']+scalars['ori_dim_m'])
+	amd_order=np.random.permutation(natural_order)
+	amd_order = Shift_AMD(amd_order, scalars)
+
+	Setup_LDL_Perm(cu_dict, scalars, amd_order)
+
+	in_x = np.arange(0, scalars['ori_dim_n']).astype(np.float32)
+	in_z = np.arange(scalars['ori_dim_n'], scalars['ori_dim_m']+scalars['ori_dim_n']).astype(np.float32)
+
+	cu_dict['in_x'] = in_x
+	cu_dict['in_z'] = in_z
+	save_to_debug(in_x, 'out_x')
+	save_to_debug(in_z, 'out_z')
+
+def factor_KKT(csc_P, csc_A, sigma, rho):
+	""" Form the KKT matrix and factor it """
+	kkt_mat = spa.bmat([[csc_P+sigma*spa.identity(csc_P.shape[0]), csc_A.T], 
+						[csc_A, (-1.0/rho)*spa.identity(csc_A.shape[0])]], 
+						format='csc')
+	gt_solver = qdldl.Solver(kkt_mat)
+	gt_csc_L, diag_D, amd_order = gt_solver.factors()
+	return gt_csc_L, diag_D, amd_order, kkt_mat
+
+def Setup_LDL_Solve(cu_dict, scalars, csc_L, diag_D):
+	CompilerLsolve = LsolveSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		csr_mat=csc_L.tocsr(),
+		SkipO3=False
+	)
+	cu_dict['LowerSolve'] = CompilerLsolve.top_pass()
+
+	natural_order = np.arange(scalars['ori_dim_n']+scalars['ori_dim_m'])
+	CompilerDiag = ShuffleMulSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		srcOrder=natural_order,
+		dstOrder=natural_order,
+		muls=1.0/diag_D)
+	cu_dict['DiagSolve'] = CompilerDiag.top_pass()
+
+	"""the csr form of L.T is csc of L"""
+	CompilerUsolve = UsolveSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		csr_mat=csc_L
+	)
+	cu_dict['UpperSolve'] = CompilerUsolve.top_pass()
+
+def ut_lsolve(cu_dict, qp_problem, scalars):
+	csc_L, diag_D, _, _ = factor_KKT(
+		qp_problem['P'], 
+		qp_problem['A'], 
+		scalars['sigma'], 
+		scalars['rho'])
+
+	concat_in = np.random.rand(csc_L.shape[0]).astype(np.float32)
+	cu_dict['in_x']=concat_in[:scalars['pdim_n']]
+	cu_dict['in_z']=concat_in[scalars['pdim_n']:]
+
+	lin_sys = csc_L + scipy.sparse.identity(csc_L.shape[0])
+	low_sol = scipy.sparse.linalg.spsolve(lin_sys, concat_in)
+	""" Test full LDL solve
+	lin_sys = scipy.sparse.diags(diag_D)
+	diag_sol =scipy.sparse.linalg.spsolve(lin_sys, low_sol)
+	lin_sys = csc_L.T + scipy.sparse.identity(csc_L.shape[0])
+	concat_out=scipy.sparse.linalg.spsolve(lin_sys, diag_sol)
+	save_to_debug(concat_out[:scalars['pdim_n']], 'out_x')
+	save_to_debug(concat_out[scalars['pdim_n']:], 'out_z')
+	Setup_LDL_Solve(cu_dict, scalars, csc_L, diag_D)
+	"""
+
+	""" Test only Lower Solve """ 
+	CompilerLsolve = LsolveSched(
+		iscaC=scalars['isca_c'],
+		pdimMax=2*scalars['pdim_max'],
+		csr_mat=csc_L.tocsr(),
+		SkipO3=False,
+		plotName='lsolve'
+	)
+	cu_dict['LowerSolve'] = CompilerLsolve.top_pass()
+	save_to_debug(low_sol[:scalars['pdim_n']], 'out_x')
+	save_to_debug(low_sol[scalars['pdim_n']:], 'out_z')
+
+	""" O3 Schedule Visualization """
+	CompilerLsolve.plot_dependency()
+	CompilerLsolve.plot_pattern()
+	CompilerLsolve.plot_o3sched()
+
+def ut_ldl(cu_dict, qp_problem, scalars):
+	csc_L, diag_D, amd_order, kkt_mat = factor_KKT(
+		qp_problem['P'], 
+		qp_problem['A'], 
+		scalars['sigma'], 
+		scalars['rho'])
+	amd_order = Shift_AMD(amd_order, scalars)
+
+	concat_in = np.random.rand(csc_L.shape[0]).astype(np.float32)
+	concat_out=scipy.sparse.linalg.spsolve(kkt_mat, concat_in)
+	save_to_debug(concat_out[:scalars['pdim_n']], 'out_x')
+	save_to_debug(concat_out[scalars['pdim_n']:], 'out_z')
+	cu_dict['in_x']=concat_in[:scalars['pdim_n']]
+	cu_dict['in_z']=concat_in[scalars['pdim_n']:]
+
+	Setup_LDL_Perm(cu_dict, scalars, amd_order)
+	Setup_LDL_Solve(cu_dict, scalars, csc_L, diag_D)
+
+def osqp_direct(cu_dict, qp_problem, scalars):
+	csc_L, diag_D, amd_order, kkt_mat = factor_KKT(
+		qp_problem['P'], 
+		qp_problem['A'], 
+		scalars['sigma'], 
+		scalars['rho'])
+	# check_empty_rows(csc_L.T.tocsr())
+	# check_empty_rows(csc_L.tocsr())
+	amd_order = Shift_AMD(amd_order, scalars)
+
+	Setup_LDL_Perm(cu_dict, scalars, amd_order)
+	Setup_LDL_Solve(cu_dict, scalars, csc_L, diag_D)
+	Setup_SpMV(cu_dict, qp_problem, scalars)
+	Setup_Constr(cu_dict, qp_problem)

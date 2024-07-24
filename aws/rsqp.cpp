@@ -22,9 +22,6 @@ void save_results(float * memPtr, int memLen){
 }
 
 int main(int argc, char** argv) {
-
-    osqp_setup();
-
     /* Command Line Parser <Full Arg>, <Short Arg>, <Description>, <Default> */
     sda::utils::CmdLineParser parser;
     parser.addSwitch("--xclbin_file", "-x", "input binary file string", "./proc.xclbin");

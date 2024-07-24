@@ -17,23 +17,29 @@ CXXFLAGS += -I./aws/includes/cmdparser
 CXXFLAGS += -I./aws/includes/logger
 CXXFLAGS += -I./aws/includes
 
-HOST_SRCS += ./aws/includes/xcl2/xcl2.cpp
-HOST_SRCS += ./aws/includes/cmdparser/cmdlineparser.cpp
-HOST_SRCS += ./aws/includes/logger/logger.cpp 
+FPGA_SRCS += ./aws/includes/xcl2/xcl2.cpp
+FPGA_SRCS += ./aws/includes/cmdparser/cmdlineparser.cpp
+FPGA_SRCS += ./aws/includes/logger/logger.cpp 
+
 HOST_SRCS += ./aws/rsqp.cpp
-HOST_SRCS += ./aws/osqp_api.c
+EXECUTABLE = ./rsqp
+
+DEMO_SRCS += ./aws/osqp_api.c
+DEMO_SRCS += ./aws/osqp_demo.c
+DEMO_EXE = ./osqp_demo
+DEMO_INPUT = ./test.dat
 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
 LDFLAGS += -lrt -lstdc++ 
 
-EXECUTABLE = ./rsqp
-
+# $(info $$CXXFLAGES is [${CXXFLAGS}])
 .PHONY: host
-host: $(EXECUTABLE)
 
-$(info $$CXXFLAGES is [${CXXFLAGS}])
-$(info $$LDFLAGS is [${LDFLAGS}])
-$(info $$HOST_SRCS is [${HOST_SRCS}])
-$(EXECUTABLE): $(HOST_SRCS) 
-		$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+host: $(EXECUTABLE)
+$(EXECUTABLE): $(FPGA_SRCS) $(HOST_SRCS)
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+
+demo: $(DEMO_EXE)
+$(DEMO_EXE): $(FPGA_SRCS) $(DEMO_SRCS)
+	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
