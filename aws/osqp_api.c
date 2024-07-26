@@ -1,5 +1,6 @@
 #include "osqp.h"
 #include "stdio.h"
+#include "xcl2.hpp"
 
 OSQPInt osqp_setup(OSQPSolver**         solverp,
                    const OSQPCscMatrix* P,
@@ -10,10 +11,16 @@ OSQPInt osqp_setup(OSQPSolver**         solverp,
                    OSQPInt              m,
                    OSQPInt              n,
                    const OSQPSettings*  settings) {
+    /* init FPGA */                    
+    auto devices = xcl::get_xil_devices();
 	return 0;
 }
 
 void osqp_set_default_settings(OSQPSettings* settings) {
+  /* Avoid working with a null pointer */
+    if (!settings){
+        return;
+    }
 	settings->device=0;
 }
 

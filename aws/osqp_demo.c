@@ -14,7 +14,7 @@ OSQPFloat *u;
 } OSQPTestData;
 
 long timeNow(){
-  // Special struct defined by sys/time.h
+    // Special struct defined by sys/time.h
   struct timeval tv;
   // Long int to store the elapsed time
   long fullTime;
@@ -112,7 +112,7 @@ int main(int argc, char *argv[])
   long time_start, time_end;
   time_start = timeNow();
 
-  data=read_problem_data(argv[2]);
+  data=read_problem_data(argv[1]);
 
   time_end = timeNow();
   printf("Problem data reading time: %ld us\n", time_end - time_start);

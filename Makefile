@@ -27,7 +27,7 @@ EXECUTABLE = ./rsqp
 DEMO_SRCS += ./aws/osqp_api.c
 DEMO_SRCS += ./aws/osqp_demo.c
 DEMO_EXE = ./osqp_demo
-DEMO_INPUT = ./test.dat
+DEMO_INPUT = ./temp/demo_input.dat
 
 # Host compiler global settings
 CXXFLAGS += -fmessage-length=0
@@ -36,10 +36,18 @@ LDFLAGS += -lrt -lstdc++
 # $(info $$CXXFLAGES is [${CXXFLAGS}])
 .PHONY: host
 
+# Original Vitis host program
 host: $(EXECUTABLE)
 $(EXECUTABLE): $(FPGA_SRCS) $(HOST_SRCS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
+# C API for GPU backend
 demo: $(DEMO_EXE)
 $(DEMO_EXE): $(FPGA_SRCS) $(DEMO_SRCS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
+
+input:
+	python ./aws/runtime_data_utils.py
+
+run: demo
+	$(DEMO_EXE) $(DEMO_INPUT)
