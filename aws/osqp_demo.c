@@ -86,15 +86,16 @@ OSQPTestData * read_problem_data(const char * filename)
   /* read vector q*/
   data->q = read_float_vec_from_file(file_ptr, data->n);
   /* read matrix A */
-  data->A = read_OSQPCscMatrix_from_file(file_ptr,
-							   data->m,
-							   data->n,
-							   data_info[2]);
+  data->A = read_OSQPCscMatrix_from_file(
+    file_ptr,
+		data->m,
+		data->n,
+		data_info[2]);
   /* read matrix P */
   data->P = read_OSQPCscMatrix_from_file(file_ptr,
-							   data->n,
-							   data->n,
-							   data_info[3]);
+		data->n,
+		data->n,
+		data_info[3]);
 
   fclose(file_ptr);
 
@@ -123,39 +124,43 @@ int main(int argc, char *argv[])
   OSQPSolver *solver = NULL;
   OSQPSettings *settings = NULL;
 
-  /* Set default settings */
   settings = (OSQPSettings *)malloc(sizeof(OSQPSettings));
   if (settings){
-	osqp_set_default_settings(settings);
-	settings->device= 0;
+	  osqp_set_default_settings(settings);
   }
 
   /* Setup solver */
   exitflag = osqp_setup(&solver, 
-  						data->P, 
-						data->q,
-						data->A, 
-						data->l, 
-						data->u,
-						data->m, 
-						data->n, 
-						settings);
+  	data->P, 
+		data->q,
+		data->A, 
+		data->l, 
+		data->u,
+		data->m, 
+		data->n, 
+		settings);
 
-  	if (!exitflag) exitflag = osqp_solve(solver);
+  /* profile continous solve */
+  for (int i=0;i<10;i++){
+    if (!exitflag) {
+      exitflag = osqp_update_data_vec(solver, 
+      data->q, 
+      data->l, 
+      data->u);
+    }
 
-  	if (!exitflag) exitflag = osqp_update_data_vec(solver, 
-													data->q, 
-													data->l, 
-													data->u);
+    if (!exitflag) {
+      exitflag = osqp_update_data_mat(solver,
+        data->P->x, 
+        OSQP_NULL, 
+        data->n,
+        data->A->x, 
+        OSQP_NULL, 
+        data->m);
+    }
 
-	if (!exitflag) exitflag = osqp_update_data_mat(solver,
-                                                   data->P->x, 
-												   OSQP_NULL, 
-												   data->n,
-                                                   data->A->x, 
-												   OSQP_NULL, 
-												   data->m);
-  	if (!exitflag) exitflag = osqp_solve(solver);
+    if (!exitflag) exitflag = osqp_solve(solver);
+  }
 
   /* Cleanup */
   osqp_cleanup(solver);

@@ -41,7 +41,7 @@ host: $(EXECUTABLE)
 $(EXECUTABLE): $(FPGA_SRCS) $(HOST_SRCS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)
 
-# C API for GPU backend
+# C API for the FPGA backend
 demo: $(DEMO_EXE)
 $(DEMO_EXE): $(FPGA_SRCS) $(DEMO_SRCS)
 	$(CXX) -o $@ $^ $(CXXFLAGS) $(LDFLAGS)

@@ -15,7 +15,9 @@ typedef struct {
 } OSQPCscMatrix;
 
 typedef struct {
-  OSQPInt device; /// FPGA identifier
+  char    elf[32];     ///< instructions
+  char    xclbin[32];     ///< bitstream
+  OSQPInt device; ///< FPGA identifier
 } OSQPSettings;
 
 typedef struct {
