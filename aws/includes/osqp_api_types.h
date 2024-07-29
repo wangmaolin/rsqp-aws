@@ -1,6 +1,9 @@
 #ifndef OSQP_API_TYPES_H
 #define OSQP_API_TYPES_H
 
+#include <vector>
+#include "xcl2.hpp" // FPGA runtime header 
+
 typedef int OSQPInt;       /* for indices */
 typedef float OSQPFloat;  /* for numerical values  */
 
@@ -30,12 +33,26 @@ typedef struct {
 typedef struct {
   // solver status
   char    status[32];     ///< Status string, e.g. 'solved'
+  OSQPInt elf[16];
+  OSQPInt hbmTotalChannels;
+  OSQPInt lr_mem_pc_words;
+  OSQPInt nnz_mem_pc_words;
 } OSQPInfo;
+
+typedef std::vector<float, aligned_allocator<float>> align_floats; 
+typedef std::vector<unsigned int, aligned_allocator<unsigned int>> align_uints;
 
 typedef struct {
   OSQPSettings*  settings; ///< Problem settings
   OSQPSolution*  solution; ///< Computed solution
   OSQPInfo*      info;     ///< Solver information
+
+  std::vector<align_floats> host_matrix; // matrix workspace on the CPU side
+	std::vector<cl::Buffer> hbm_matrix; // matrix workspace on the FPGA side
+  std::vector<align_floats> host_vec;
+	std::vector<cl::Buffer> hbm_vec;
+  cl::CommandQueue cmd_queue;
+  cl::Kernel cu_krnl;
 } OSQPSolver;
 
 #endif /* ifndef OSQP_API_TYPES_H */

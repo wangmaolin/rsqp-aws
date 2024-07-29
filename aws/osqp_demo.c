@@ -141,7 +141,7 @@ int main(int argc, char *argv[])
 		settings);
 
   /* profile continous solve */
-  for (int i=0;i<10;i++){
+  for (int i=0;i<5;i++){
     if (!exitflag) {
       exitflag = osqp_update_data_vec(solver, 
       data->q, 

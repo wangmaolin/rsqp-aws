@@ -13,7 +13,9 @@ prob.solve()
 ```
 
 # C Interface 
-WIP
+see `./aws/osqp_api.c`
+
+Example: `./aws/osqp_demo.c`
 
 # Deployment 
 We support on premise and AWS deployment with the following FPGA models:

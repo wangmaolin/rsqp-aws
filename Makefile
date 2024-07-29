@@ -51,3 +51,8 @@ input:
 
 run: demo
 	$(DEMO_EXE) $(DEMO_INPUT)
+	python3 ./aws/reg_val_check.py\
+		--content ./temp/reg_content.txt\
+		--vector ./temp/result_vector.txt\
+		--src-file ./aws/osqp_indirect.c\
+		--ground-truth none 
