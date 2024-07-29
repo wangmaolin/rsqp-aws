@@ -120,6 +120,9 @@ OSQPInt osqp_setup(OSQPSolver**         solverp,
     OCL_CHECK(hw_err, solver->cmd_queue = cl::CommandQueue(context, device, cl::QueueProperties::OutOfOrder, &hw_err));
     program = cl::Program(context, {device}, bins, nullptr, &hw_err);
 
+    // python funcion call test
+    test_py_call();
+
     // ------ Setup Profile End ------ 
     auto setup_end= std::chrono::high_resolution_clock::now();
     setup_time = std::chrono::duration<double>(setup_end - setup_start);
@@ -200,8 +203,6 @@ OSQPInt osqp_setup(OSQPSolver**         solverp,
                                               solver->info->elf[1]));
     OCL_CHECK(hw_err, hw_err = solver->cu_krnl.setArg(krnlArgCount++,
                                               0));
-    // python funcion call test
-    test_py_call();
 	return 0;
 }
 
