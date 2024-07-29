@@ -33,6 +33,12 @@ DEMO_INPUT = ./temp/demo_input.dat
 CXXFLAGS += -fmessage-length=0
 LDFLAGS += -lrt -lstdc++ 
 
+# For python function calls inside C++
+# also need to add export LD_LIBRARY_PATH=/home/maolinwang/miniconda3/lib:$LD_LIBRARY_PATH to .bashrc
+CXXFLAGS += $(shell python3-config --cflags)
+LDFLAGS += $(shell python3-config --ldflags)
+LDFLAGS += -lpython3.10
+
 # $(info $$CXXFLAGES is [${CXXFLAGS}])
 .PHONY: host
 

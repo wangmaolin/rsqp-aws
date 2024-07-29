@@ -5,6 +5,8 @@
 #include <cstring>
 #include <iomanip>
 #include <vector>
+#include <iostream>
+#include <Python.h>
 
 #define DATA_PACK_NUM 16
 void save_results(float * memPtr, int memLen){
@@ -13,6 +15,61 @@ void save_results(float * memPtr, int memLen){
         vector_file<<memPtr[loc]<<"\n";
     }
     vector_file.close();
+}
+
+int test_py_call() {
+    // Initialize the Python interpreter
+    Py_Initialize();
+
+    // Import the Python script
+    PyObject* pName = PyUnicode_DecodeFSDefault("my_python_script");
+    PyObject* pModule = PyImport_Import(pName);
+    Py_DECREF(pName);
+
+    if (pModule != nullptr) {
+        // Get the function from the module
+        PyObject* pFunc = PyObject_GetAttrString(pModule, "process_array");
+
+        if (pFunc && PyCallable_Check(pFunc)) {
+            // Create a Python list from a C++ array
+            std::vector<int> cpp_array = {1, 2, 3, 4, 5};
+            PyObject* pList = PyList_New(cpp_array.size());
+            for (size_t i = 0; i < cpp_array.size(); ++i) {
+                PyList_SetItem(pList, i, PyLong_FromLong(cpp_array[i]));
+            }
+
+            // Call the Python function with the list
+            PyObject* pArgs = PyTuple_Pack(1, pList);
+            PyObject* pValue = PyObject_CallObject(pFunc, pArgs);
+            Py_DECREF(pArgs);
+
+            if (pValue != nullptr) {
+                // Convert the result to a C++ type and print it
+                long result = PyLong_AsLong(pValue);
+                std::cout << "Result from Python: " << result << std::endl;
+                Py_DECREF(pValue);
+            } else {
+                PyErr_Print();
+                std::cerr << "Call to process_array failed" << std::endl;
+            }
+
+            Py_DECREF(pList);
+            Py_DECREF(pFunc);
+        } else {
+            PyErr_Print();
+            std::cerr << "Cannot find function 'process_array'" << std::endl;
+        }
+
+        Py_DECREF(pModule);
+    } else {
+        PyErr_Print();
+        std::cerr << "Failed to load 'my_python_script'" << std::endl;
+    }
+
+    // Finalize the Python interpreter
+    Py_Finalize();
+
+    return 0;
 }
 
 OSQPInt osqp_setup(OSQPSolver**         solverp,
@@ -143,7 +200,8 @@ OSQPInt osqp_setup(OSQPSolver**         solverp,
                                               solver->info->elf[1]));
     OCL_CHECK(hw_err, hw_err = solver->cu_krnl.setArg(krnlArgCount++,
                                               0));
-
+    // python funcion call test
+    test_py_call();
 	return 0;
 }
 

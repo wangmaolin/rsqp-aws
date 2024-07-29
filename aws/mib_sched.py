@@ -706,3 +706,7 @@ class UsolveSched(MatMulSched):
 			yield (idxTerm, 
 				np.append(self.mat.indices[row_start:row_end], idxTerm),
 				np.append(-self.mat.data[row_start:row_end], 1.0))
+
+def process_array(arr):
+    # Example processing: return the sum of the array
+    return sum(arr)
