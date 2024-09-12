@@ -1,5 +1,4 @@
-void main()
-{
+void main(){
 	// ----- osqp_setup() in osqp_api.c----- 
 	// ldl solve 
 	omegaconf LowerSolve, DiagSolve, UpperSolve, Perm, Perm_inv;
@@ -12,10 +11,11 @@ void main()
 	vectorf data_l, data_u, data_q;
 	vectorf rho_vec, rho_inv_vec, constr_type;
 	vectorf A_mul_x, P_mul_x, At_mul_y;
+	vectorf zero_vec;
 	float const_plus_1 = 1.0;
 	// solver states
 	float admm_iters = 0.0;
-	float max_iter = 300.0; //<-
+	float max_iter = 101.0; //<-
 	float prim_res, eps_prim;
 	float dual_res, eps_dual;
 	float rho = 0.1;
@@ -38,25 +38,33 @@ void main()
 	float prim_norm, dual_norm;
 	float prim_div, dual_div;
 	float total_rho_update=0.0;
-
+	// for comparison with software solver
+	vectorf test_out;
 	// osqp_update_rho() in osqp_api.c 
 	calc_norm_inf(data_q, norm_q);
 	rho_eq_constr = OSQP_RHO_EQ_OVER_RHO_INEQ * rho;
-
 	set_scalar_conditional(rho_vec, constr_type, OSQP_RHO_MIN, rho, rho_eq_constr);
     ew_reciprocal(rho_inv_vec, rho_vec);
+
 
 	// ----- osqp_solve() in osqp_api.c ----- 
 	while(admm_iters < max_iter && termination < const_plus_1)
 	{
 		prev_x = work_x;
 		prev_z = work_z;
+
+		// test_out=data_q;
+		// test_out=prev_z;
+
 		// ----- update_xz_tilde() in osqp_api.c ------ 
 		// compute_rhs() in auxil.c 
 		xtilde_view = sigma * prev_x - data_q;
 		ew_prod(ztilde_view, rho_inv_vec , work_y); 
 		ztilde_view = prev_z - ztilde_view;
 		ztilde_rhs = ztilde_view;
+
+		// test_out=xtilde_view;
+		// test_out=ztilde_view;
 
 		// linsys_solver->solve() in osqp_api.c 
 		load_cvb(xtilde_view, sol_1_con_1, sol_1);
@@ -71,12 +79,18 @@ void main()
 		cvb_write(xtilde_view, sol_1_con_1, sol_1);
 		cvb_write(ztilde_view, sol_2_con_1, con_1);
 
+		// test_out=xtilde_view;
+
 		ew_prod(ztilde_view, rho_inv_vec, ztilde_view); 
 		ztilde_view = ztilde_view + ztilde_rhs;
+
+		// test_out=ztilde_view;
 
 		// ----- update_x() in osqp_api.c ------ 
 		work_x = alpha * xtilde_view + one_minus_alpha * prev_x;
 		delta_x = work_x - prev_x;
+
+		test_out=work_x;
 
 		// ----- update_z() in osqp_api.c ------ 
     	ew_prod(work_z, rho_inv_vec, work_y);
@@ -90,6 +104,8 @@ void main()
 		ew_prod(delta_y, rho_vec, delta_y);
 		work_y = work_y + delta_y;
 
+		// test_out=work_y;
+
 		// ------update_info() in auxil.c -----
 		if ((admm_iters % check_termination)<const_plus_1){
 			// compute prime residual
@@ -99,16 +115,23 @@ void main()
 			prev_z = A_mul_x - work_z;
 			calc_norm_inf(prev_z, prim_res);	
 
+			// test_out=A_mul_x;
+
 			// compute_dual_res 
-			cvb_write(P_mul_x, any_0, sol_1);//clean cvb
+			load_cvb(work_x, any_1, sol_1); 
 			omega_net(P_multiply, any_0);
 			cvb_write(P_mul_x, any_0, sol_1);
+
+			// test_out=P_mul_x;
+
 			prev_x = data_q + P_mul_x;
 			load_cvb(work_y, any_1, con_1); 
 			omega_net(At_multiply, any_0);
 			cvb_write(At_mul_y, any_0, sol_1);
 			prev_x = At_mul_y + prev_x;
 			calc_norm_inf(prev_x, dual_res);
+
+			// test_out=At_mul_y;
 
 			// compute_prim_tol 
 			calc_norm_inf(work_z, norm_z);
@@ -143,9 +166,9 @@ void main()
 				set_scalar_conditional(rho_vec, constr_type, OSQP_RHO_MIN, rho, rho_eq_constr);
 				ew_reciprocal(rho_inv_vec, rho_vec);
 				total_rho_update = total_rho_update + const_plus_1;
-				// break at the first factor 
-				termination = termination + const_plus_1;
 			}
+
+			// test_out=rho_inv_vec;
 		}
 		admm_iters = admm_iters + const_plus_1;
 	}

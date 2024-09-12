@@ -9,11 +9,9 @@ from inst_set import df_insert_row
 import matplotlib.pyplot as plt
 from networkx.drawing.nx_pydot import graphviz_layout
 from utils import omega_rwc_bitwidth
-from PIL import Image
 import sys
 sys.path.append('./figure')
 from micro57_pset import blue_code, green_code, yellow_code
-from matplotlib.colors import ListedColormap
 import matplotlib.gridspec as gridspec
 
 logging.getLogger('matplotlib.font_manager').setLevel(logging.ERROR)
@@ -22,17 +20,24 @@ def contains_number(list_of_numbers, target_number):
 	""" Function to check if a number appears in the list"""
 	return target_number in list_of_numbers
 
+def find_empty_slots(bit_map_after_merge):
+	return np.where(np.any(bit_map_after_merge, axis=1) == False)[0]
+
 class BaseSched:
-	def __init__(self, iscaC, pdimMax, SkipO3, plotName): 
+	def __init__(self, iscaC, pdimMax, SkipO3, plotName, CtrlOnly=False): 
 		self.iscaC=iscaC
 		self.pipeStage = np.log2(iscaC).astype(int)
-		""" U280 Total II delay """
-		pipeIIdelay={16:43, 32: 51, 64:51}
+		""" U280 Total II delay 
+			AWS 64 delay 51
+			U50 64 delay 60
+		"""
+		pipeIIdelay={16:43, 32: 49, 64:60}
 		assert iscaC in pipeIIdelay
 		""" Instruction Scheduling Delay for True Dependency """
 		self.pipeDelay = pipeIIdelay.get(iscaC)
 		""" Instruction Scheduling Delay for Anti Dependency """
-		self.antiDelay = -self.pipeDelay+9
+		pipeAntiDelay={16:43, 32: 46, 64:60}
+		self.antiDelay = pipeAntiDelay.get(iscaC)
 		""" For scheduling"""
 		self.rrIndices=[]
 		self.addrsRemit=[]
@@ -43,9 +48,10 @@ class BaseSched:
 		self.ddNxG = nx.DiGraph()
 		""" Max Address Space used by the network program """
 		self.heightRF = pdimMax//self.iscaC
-		self.nullAddr = 2*self.heightRF 
+		""" TODO: CHECK nullAddr below scaler register files offset on CVB """
+		self.nullAddr = 2*self.heightRF # pay attention not to overwrite rigister file
 		""" Network instruction bit width of each field """
-		ctrlBW, readBW, writeBW, _ = omega_rwc_bitwidth(self.pipeStage)
+		ctrlBW, readBW, writeBW = omega_rwc_bitwidth(self.pipeStage)
 		assert readBW == writeBW
 		self.capacityOfRF = 2**readBW
 		self.readBitShift = ctrlBW
@@ -54,6 +60,8 @@ class BaseSched:
 		self.SkipO3 = SkipO3
 		""" Intermediate plot for debugging """
 		self.plotName = plotName
+		""" Only return the control signal """
+		self.CtrlOnly=CtrlOnly
 
 	def addr_1d_2d(self, addr_1d):
 		bank_num = addr_1d % self.iscaC
@@ -158,29 +166,40 @@ class BaseSched:
 			bit_map_single = rrTable[instItem,:]
 			""" Grow bitmap if schedule overflow """
 			schedGrow=earliestSlot-condense_bitmap.shape[0]
+
 			if schedGrow>=0:
 				condense_bitmap = np.concatenate(
 					(condense_bitmap, 
-	  				np.zeros((schedGrow+2, resourceWidth), dtype=bool)),
+	  				np.zeros((schedGrow+1, resourceWidth), dtype=bool)),
 					axis=0)
+
 			bit_map_after_merge = np.logical_and(
 				condense_bitmap[earliestSlot:,:], 
 				bit_map_single)
 
-			""" Select the first fit"""
-			firstFitSlot = np.where(np.any(bit_map_after_merge, axis=1) == False)[0][0] + earliestSlot
+			""" Search the first fit"""
+			EmptySlots = find_empty_slots(bit_map_after_merge)
+			if len(EmptySlots)<1:
+				""" grow if all full """
+				condense_bitmap = np.concatenate(
+								(condense_bitmap, 
+								np.zeros((1, resourceWidth), dtype=bool)),
+								axis=0)
+				firstFitSlot = bit_map_after_merge.shape[0] + earliestSlot
+			else:
+				firstFitSlot = EmptySlots[0] + earliestSlot
+
 			instSched[instItem] = firstFitSlot
 			condense_temp_slice = condense_bitmap[firstFitSlot,:] 
 			""" Update the merged row """
 			condense_bitmap[firstFitSlot,:] = np.logical_or(bit_map_single, condense_temp_slice)
+
 		assert (instSched>=0).all()
 		return instSched
 
 	def hbm_fill(self, instSched, routeCtrl):
 		zipHeight = max(instSched) + 1
-		logging.debug("compressed %d origin %d", 
-				zipHeight,
-				len(instSched))
+		logging.debug(f"{self.plotName:10s} O3 {zipHeight:5d}/{len(instSched):5d}") 
 
 		""" Codegen, no inter loop conflict, can be parallelized """
 		hbmMul = np.zeros((zipHeight, self.iscaC), dtype=np.float32)
@@ -198,9 +217,11 @@ class BaseSched:
 			""" Assert read and write RF address within range """
 			assert self.addrWemit[rIdx] < self.capacityOfRF
 			assert (self.addrsRemit[rIdx] < self.capacityOfRF).all()
-
-		""" horizonal concate """
-		return np.hstack((hbmMul, hbmInst.view(np.float32)))
+		if self.CtrlOnly:
+			return hbmInst.view(np.float32)
+		else:
+			""" horizonal concate """
+			return np.hstack((hbmMul, hbmInst.view(np.float32)))
 
 	def code_gen(self):
 		"""	Form the graph and table constraints """
@@ -378,19 +399,22 @@ class ShuffleMulSched(BaseSched):
 class MatMulSched(BaseSched):
 	""" O3 Instruction Scheduling Based on Dragon Book Chapter 10 """
 	def __init__(self, 
-			  csr_mat, 
+			  SpMatrix, 
 			  iscaC, 
 			  readOffset,
 			  pdimMax,
 			  plotName='fig',
-			  SkipO3=False):
+			  SkipO3=False,
+			  CtrlOnly=False):
 		super().__init__(iscaC=iscaC, 
 				   pdimMax=pdimMax, 
 				   SkipO3=SkipO3,
-				   plotName=plotName)
-		self.mat = csr_mat
+				   plotName=plotName,
+				   CtrlOnly=CtrlOnly)
+		self.mat = SpMatrix
 		self.readOffset = readOffset
 		self.poolEnd = self.iscaC-1
+
 		""" Each idxTerm has seperate psum pool"""
 		self.psumPool = 2*self.heightRF + 1 
 		self.TermStack = [] 
@@ -629,11 +653,11 @@ class LsolveSched(MatMulSched):
 	def __init__(self, 
 			  iscaC, 
 			  pdimMax, 
-			  csr_mat,
-			  SkipO3=True,
+			  SpMatrix,
+			  SkipO3=False,
 			  plotName='fig'):
 		super().__init__(
-			csr_mat=csr_mat,
+			SpMatrix=SpMatrix,
 			iscaC=iscaC, 
 			readOffset=0,
 			pdimMax=pdimMax,
@@ -687,15 +711,19 @@ class LsolveSched(MatMulSched):
 				np.append(self.mat.indices[row_start:row_end], idxTerm),
 				np.append(-self.mat.data[row_start:row_end], 1.0))
 
-class UsolveSched(MatMulSched):
-	def __init__(self, iscaC, pdimMax, csr_mat,
-			  SkipO3=True):
+class UsolveSched(LsolveSched):
+	def __init__(self, 
+			  iscaC, 
+			  pdimMax, 
+			  SpMatrix,
+			  SkipO3=False,
+			  plotName='fig'): 
 		super().__init__(
-			csr_mat=csr_mat,
+			SpMatrix=SpMatrix,
 			iscaC=iscaC, 
-			readOffset=0,
 			pdimMax=pdimMax,
-			SkipO3=SkipO3)
+			SkipO3=SkipO3,
+			plotName=plotName)
 
 	def row_stream(self):
 		for idxTerm in reversed(range(self.mat.shape[0])):
@@ -707,6 +735,120 @@ class UsolveSched(MatMulSched):
 				np.append(self.mat.indices[row_start:row_end], idxTerm),
 				np.append(-self.mat.data[row_start:row_end], 1.0))
 
-def process_array(arr):
-    # Example processing: return the sum of the array
-    return sum(arr)
+class UpFactorSched(LsolveSched):
+	def __init__(self, 
+			  iscaC, 
+			  pdimMax, 
+			  SpMatrix,
+			  etree,
+			  Lnz,
+			  SkipO3=False):
+		super().__init__(
+			SpMatrix=SpMatrix,
+			iscaC=iscaC, 
+			pdimMax=pdimMax,
+			SkipO3=SkipO3)
+		self.etree=etree
+		self.Lnz=Lnz
+
+	def top_pass(self):
+		s_in = self.row_stream()
+		rr_pass = compose_left(
+			itertools.chain.from_iterable,
+		)
+		""" Apply pass """
+		list(rr_pass(s_in))
+
+		# return self.code_gen()
+
+	def row_stream(self):
+		""" numeric factor QDLDL_factor() 
+			in the qdldl.c, inputs: """
+		n=self.mat.shape[0]
+		Ap = self.mat.indptr
+		Ai = self.mat.indices
+		Ax = self.mat.data
+		etree = self.etree
+		Lnz = self.Lnz
+		""" Solve a series of y = L(0:(k-1),0:k-1)) \ b """	
+		sumLnz = np.sum(Lnz)
+		Dinv = np.zeros(n)
+		yIdx = np.zeros(n, dtype=np.int32)
+		elimBuffer = np.zeros(n, dtype=np.int32)
+		LNextSpaceInCol = np.zeros(n, dtype=np.int32)
+		Lp = np.zeros(n+1, dtype=np.int32)
+		Li = np.zeros(sumLnz, dtype=np.int32)
+		Lx = np.zeros(sumLnz, dtype=np.float32)
+		QDLDL_UNUSED = 0
+		QDLDL_USED = 1
+		QDLDL_UNKNOWN = -1
+
+		yMarkers = np.full(n, QDLDL_UNUSED, dtype=np.int32)
+		yVals = np.zeros(n, dtype=np.float32)
+		D = np.zeros(n)
+		for i in range(n):
+			Lp[i+1] = Lp[i] + Lnz[i]
+			LNextSpaceInCol[i] = Lp[i]
+
+		D[0] = Ax[0]
+		Dinv[0] = 1/D[0]
+
+		for k in range(1, n):
+			col_start = Ap[k]
+			col_end = Ap[k+1] - 1
+
+			""" Initialise y(bidx) = b(bidx) """
+			diag_idx = Ai[col_end]
+			assert diag_idx == k
+			D[k] = Ax[col_end]
+			b_indices = Ai[col_start:col_end]
+			yVals[b_indices] = Ax[col_start:col_end]
+
+			""" Symbolic phase, etree Reach """
+			nnzY = 0
+			for i in range(col_start, col_end):
+				bidx = Ai[i]
+				nextIdx = bidx
+				if yMarkers[nextIdx] == QDLDL_UNUSED:
+					yMarkers[nextIdx] = QDLDL_USED
+
+					elimBuffer[0] = nextIdx
+					nnzE = 1
+
+					nextIdx = etree[bidx]# walk through etree
+					while nextIdx != QDLDL_UNKNOWN and nextIdx < k:
+						# Mark visited node
+						if yMarkers[nextIdx] == QDLDL_USED:
+							break
+						yMarkers[nextIdx] = QDLDL_USED
+						# Record node
+						elimBuffer[nnzE] = nextIdx
+						nnzE += 1
+						# Move on to next node
+						nextIdx = etree[nextIdx]
+
+					# put the elimination list in the reverse order
+					yIdx[nnzY:nnzY+nnzE] = elimBuffer[:nnzE][::-1]
+					nnzY += nnzE
+
+			""" Numeric Solve y = L \ b 
+				Through column elimination """
+			for i in reversed(range(0, nnzY)):
+				cidx = yIdx[i] # column index
+				tmpIdx = LNextSpaceInCol[cidx]
+				yVals_cidx = yVals[cidx]
+				for j in range(Lp[cidx], tmpIdx):
+					yVals[Li[j]] -= Lx[j]*yVals_cidx
+
+				Li[tmpIdx] = k
+				Lx[tmpIdx] = yVals_cidx * Dinv[cidx]
+				D[k] -= yVals_cidx * Lx[tmpIdx]
+				LNextSpaceInCol[cidx] += 1
+
+				yVals[cidx] = 0.0
+				yMarkers[cidx] = QDLDL_UNUSED
+
+			Dinv[k] = 1/D[k]
+
+		print(Lx)
+		return Lp, Li, Lx, D

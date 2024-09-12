@@ -160,26 +160,6 @@ OSQPInt osqp_setup(OSQPSolver**         solverp,
     std::setprecision(2) << std::scientific
     << dt_time.count()<<"s"<<std::endl;
 
-    // allocate Matrix Region on HBM
-	for(int hbmItem=0; hbmItem<solver->info->hbmTotalChannels; hbmItem++) {
-        solver->host_matrix.push_back(align_floats(solver->info->nnz_mem_pc_words));
-
-		inst_file_stream.read(reinterpret_cast<char *>(solver->host_matrix[hbmItem].data()), 
-            solver->info->nnz_mem_pc_words*sizeof(float));
-
-        cl::Buffer bufItem; 
-        OCL_CHECK(hw_err, bufItem=cl::Buffer(context,
-                                              CL_MEM_USE_HOST_PTR,
-                                              solver->info->nnz_mem_pc_words* sizeof(float),
-                                              solver->host_matrix[hbmItem].data(),
-                                              &hw_err));
-        solver->hbm_matrix.push_back(bufItem);
-
-        OCL_CHECK(hw_err, hw_err = solver->cu_krnl.setArg(krnlArgCount++,
-                                                  solver->hbm_matrix[hbmItem]));
-
-    }
-
     // allocate Vector Region on HBM
 	for(int hbmItem=0; hbmItem<solver->info->hbmTotalChannels; hbmItem++) {
         solver->host_vec.push_back(align_floats(solver->info->lr_mem_pc_words));
@@ -299,23 +279,7 @@ OSQPInt osqp_update_data_mat(OSQPSolver*      solver,
                              const OSQPFloat* Ax_new,
                              const OSQPInt*   Ax_new_idx,
                              OSQPInt          A_new_n) {
-    // ----- Matrix Transfer Profile Start -----
-    std::chrono::duration<double> dt_time(0);
-    auto dt_start = std::chrono::high_resolution_clock::now();
-
-	for(int i=0; i<solver->info->hbmTotalChannels;i++) 
-	{
-		solver->cmd_queue.enqueueMigrateMemObjects({solver->hbm_matrix[i]}, 0 );
-		solver->cmd_queue.finish();
-	}
-
-    // ---- Matrix Transfer End  -----
-    auto dt_end = std::chrono::high_resolution_clock::now();
-    dt_time = std::chrono::duration<double>(dt_end - dt_start);
-    std::cout << "Matrix Transfer time:  "<<
-    std::setprecision(2) << std::scientific
-    << dt_time.count()<<"s"<<std::endl;
-
+    /* the matrix data also stores at hbm_vec */
 	return 0;							
 }
 

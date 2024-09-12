@@ -93,29 +93,11 @@ int main(int argc, char** argv) {
     cmd_queue.finish();
 
 	int hbmTotalChannels = program_info[12];
-
-	int nnz_mem_pc_words = program_info[14];
-	std::vector<cl::Buffer>  cu_nnz_mem(hbmTotalChannels);
-	std::vector<float, aligned_allocator<float>> host_nnz_buf(nnz_mem_pc_words);
-	for(int i=0; i<hbmTotalChannels;i++) 
-	{
-		inst_file_stream.read(reinterpret_cast<char *>(host_nnz_buf.data()), nnz_mem_pc_words*sizeof(float));
-		OCL_CHECK(hw_err, cu_nnz_mem[i] = cl::Buffer(context,
-													CL_MEM_USE_HOST_PTR, 
-													nnz_mem_pc_words* sizeof(float),
-													host_nnz_buf.data(), 
-													&hw_err));
-		OCL_CHECK(hw_err, hw_err = cu_krnl.setArg(krnlArgCount++, cu_nnz_mem[i]));
-		cmd_queue.enqueueMigrateMemObjects({cu_nnz_mem[i]}, 0 );
-		cmd_queue.finish();
-	}
-
 	int lr_mem_pc_words = program_info[15];
 	std::vector<float, aligned_allocator<float>> host_lr_buf(lr_mem_pc_words);
-
 	std::vector<cl::Buffer> cu_rhs_mem(hbmTotalChannels);
-	for(int i=0; i<hbmTotalChannels;i++) 
-	{
+
+	for(int i=0; i<hbmTotalChannels;i++){
         inst_file_stream.read(reinterpret_cast<char *>(host_lr_buf.data()),
                               lr_mem_pc_words * sizeof(float));
         OCL_CHECK(hw_err, cu_rhs_mem[i] = cl::Buffer(context,

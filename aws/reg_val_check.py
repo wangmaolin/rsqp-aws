@@ -50,8 +50,10 @@ def check_diff(a, b, var_name):
 
 	random_sample = np.random.randint(0,len(a)-1, size=sampleSize)
 	plt.subplot(2,2,4)
-	plt.scatter(random_sample, a[random_sample], label='truth', marker='|')
-	plt.scatter(random_sample, b[random_sample], label='result', marker='_')
+	plt.scatter(random_sample, a[random_sample], label='truth', 
+			 marker='o',c='none', edgecolors='g')
+	plt.scatter(random_sample, b[random_sample], label='result', 
+			 marker='+', color='r')
 	plt.legend()
 
 	plt.savefig('./temp/result_compare.png')
@@ -85,7 +87,7 @@ def main():
 	df['Result']=content
 	df.to_csv('./temp/reg_result.csv', index=False)
 	reg_check_list =['max_iter', 'admm_iters', 'prim_res', 'dual_res',
-					'rho_estimate', 'pcg_iters','norm_pcg_res', 'total_rho_update', 'total_pcg_iters','test_scalar']
+					'rho_estimate', 'pcg_iters','norm_pcg_res', 'total_rho_update', 'total_pcg_iters','ut_scalar']
 	val_df = df[['Reg', 'Value', 'Result']]
 	for item in reg_check_list:
 		if item in df['Reg'].values:
@@ -97,8 +99,8 @@ def main():
 	if args.ground_truth is not None and 'none' not in args.ground_truth:
 		gt_vector = np.fromfile('./temp/'+args.ground_truth, dtype=np.float32)
 		res_vector = np.loadtxt(args.vector)
-		# print('result len', len(gt_vector), len(res_vector))
-		check_diff(gt_vector, res_vector, args.ground_truth)
+		print('gt res len', len(gt_vector), len(res_vector))
+		check_diff(gt_vector, res_vector[:len(gt_vector)], args.ground_truth)
 
 if __name__ == '__main__':
 	main()

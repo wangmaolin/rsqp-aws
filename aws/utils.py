@@ -24,7 +24,7 @@ def align_compute_padding(dim_n, isca_c):
 	return dim_n + dim_n_pad_num, dim_n_pad_num
 
 def pad_problem_matrices(ori_dim_m, ori_dim_n, isca_c):
-	""" Preprocess the Problem Data"""
+	""" Preprocess the Problem Data """
 	pdim_m, m_padding = align_compute_padding(ori_dim_m, isca_c)
 	pdim_n, n_padding = align_compute_padding(ori_dim_n, isca_c)
 	return pdim_m, pdim_n, m_padding, n_padding 
@@ -32,10 +32,9 @@ def pad_problem_matrices(ori_dim_m, ori_dim_n, isca_c):
 def omega_rwc_bitwidth(stage_num):
 	""" Compute the bitwidth of read, write and ctrl signal """
 	ctrl_bitwidth = 2 * stage_num
-	read_bitwidth = 15 - stage_num
-	write_bitwidth = 15 - stage_num
-	mul_sel_bitwidth = 1
-	return ctrl_bitwidth, read_bitwidth, write_bitwidth, mul_sel_bitwidth
+	read_bitwidth = 16 - stage_num
+	write_bitwidth = 16 - stage_num
+	return ctrl_bitwidth, read_bitwidth, write_bitwidth 
 
 def rotate(list, n):
 	return list[n:] + list[:n]

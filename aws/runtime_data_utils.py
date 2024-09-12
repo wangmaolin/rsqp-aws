@@ -59,12 +59,11 @@ def generate_runtime_data(qp_problem, problem_name, double_flag):
 			write_vec_to_file(qp_problem[vec_str], problem_data_file, double_flag)
 
 		""" Write matrices """
-		for mat_str in ['A']:
-		# for mat_str in ['A', 'P']:
-			print('----- writing matrix '+mat_str)
-			write_vec_to_file(qp_problem[mat_str].data, problem_data_file, double_flag)
-			write_vec_to_file(qp_problem[mat_str].indices, problem_data_file, double_flag)
-			write_vec_to_file(qp_problem[mat_str].indptr, problem_data_file, double_flag)
+		mat_str = 'A'
+		print('----- writing matrix '+mat_str)
+		write_vec_to_file(qp_problem[mat_str].data, problem_data_file, double_flag)
+		write_vec_to_file(qp_problem[mat_str].indices, problem_data_file, double_flag)
+		write_vec_to_file(qp_problem[mat_str].indptr, problem_data_file, double_flag)
 
 		print('----- writing matrix P')
 		write_vec_to_file(upper_P.data, problem_data_file, double_flag)

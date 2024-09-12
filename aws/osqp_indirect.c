@@ -1,7 +1,7 @@
-void main()
-{
+void main(){
 	/* ----- osqp_setup() in osqp_api.c----- */
 	omegaconf A_multiply, P_multiply, At_multiply;
+	omegaconf vector_sum; //required by dot
 	// vectors 
 	vectorf work_x, prev_x, delta_x, xtilde_view;
 	vectorf work_y, delta_y;
@@ -13,7 +13,7 @@ void main()
 	float const_minus_1 = -1.0;
 	// solver states
 	float admm_iters = 0.0;
-	float max_iter = 300.0; //<-
+	float max_iter = 101.0; //<-
 	float prim_res, eps_prim;
 	float dual_res, eps_dual;
 	float rho = 0.1;
@@ -191,7 +191,8 @@ void main()
 			calc_norm_inf(prev_z, prim_res);	
 
 			// compute_dual_res 
-			cvb_write(P_mul_x, any_0, sol_1);//clean cvb
+			// cvb_write(P_mul_x, any_0, sol_1);//clean cvb
+			load_cvb(work_x, any_1, sol_1); 
 			omega_net(P_multiply, any_0);
 			cvb_write(P_mul_x, any_0, sol_1);
 			prev_x = data_q + P_mul_x;

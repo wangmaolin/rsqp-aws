@@ -7,6 +7,7 @@ from pycparser import parse_file
 
 from utils import data_pack_num
 from utils import get_c_marco
+from utils import omega_rwc_bitwidth
 
 def get_Decl_info(node):
 	if node.init is not None:
@@ -48,6 +49,12 @@ class Compiler(c_ast.NodeVisitor):
 		self.cu_dict = cu_dict
 		self.hbm_pc = hbm_pc
 		self.isca_c = hbm_pc * data_pack_num
+		""" For generate omega instructions """
+		self.pipeStage = np.log2(self.isca_c).astype(int)
+		ctrlBW, readBW, writeBW = omega_rwc_bitwidth(self.pipeStage)
+		assert readBW == writeBW
+		self.readBitShift = ctrlBW
+		self.writeBitShift = ctrlBW + readBW
 
 		""" Packed problem dimension """
 		self.sol_vec_pack_len = pdim_n//self.isca_c
@@ -55,6 +62,11 @@ class Compiler(c_ast.NodeVisitor):
 		self.unified_vec_pack_len = max(self.con_vec_pack_len, self.sol_vec_pack_len)
 		self.sol_cut_off_bank = self.isca_c-n_padding
 		self.con_cut_off_bank = self.isca_c-m_padding
+		""" use the other end on CVB as register file,
+		 	omega instruction grows from the start, 
+			check rf_read and rf_write in top_unit.cpp,
+			make sure this equals to TETRIS_HEIGHT-1  """
+		self.register_file_offset = 3999
 
 		""" Instruction Types """
 		self.cu_inst_num = 0
@@ -65,12 +77,13 @@ class Compiler(c_ast.NodeVisitor):
 		self.inst_axpby= 4
 		self.inst_load_cvb = 5
 		self.inst_dot = 6
+		self.inst_rf_write = 6
 		self.inst_scalar_op = 7
 		self.inst_norm_inf = 8
 		""" The unified instruction to rule it all"""
 		self.inst_omega = 9
-		""" the instruction that updates HBM nnz """
-		self.inst_gather_scatter = 10
+		""" broadcast one register to all banks """
+		self.inst_cvb_broadcast = 10
 		""" Memory Regions """
 		self.uint32_pack_num = data_pack_num
 		self.indice_mem_words = 0
@@ -97,7 +110,8 @@ class Compiler(c_ast.NodeVisitor):
 		self.program_info = np.zeros((4, 4), dtype=np.uint32)
 		self.info_ptr = 0
 
-		self.register_file = np.zeros(64, dtype=np.float32)
+		self.RegFileSize = 64
+		self.register_file = np.zeros(self.RegFileSize, dtype=np.float32)
 
 		"""
 		program info are 128 bits aligned
@@ -154,6 +168,7 @@ class Compiler(c_ast.NodeVisitor):
 		}
 
 		self.omegaconf_list = ['placeholder_cu_arg_info']
+
 		self.axpby_type_dict ={'linear':0, 
 						 'ew_prod':1, 
 						 'ew_reciprocal':2, 
@@ -217,6 +232,11 @@ class Compiler(c_ast.NodeVisitor):
 			'any': 0 
 			}
 
+	def IdxToBin(self, idx):
+		""" Turn the binary representation of an int32 number to a byte array """
+		cvt_temp = np.array([idx]).view(np.uint8)
+		return np.unpackbits(cvt_temp, bitorder = 'little')[:self.pipeStage]
+
 	def offset_translate(self, offset_str):
 		offset_arr = offset_str.split('_')
 		assert len(offset_arr) % 2 == 0
@@ -235,7 +255,8 @@ class Compiler(c_ast.NodeVisitor):
 
 	def dynamic_config(self, config_name):
 		offset_item = self.lookup_omegaconf(config_name)
-		self.cu_arg_info[data_pack_num*offset_item + 0] = self.nnz_data_region_pointer//data_pack_num
+		self.cu_arg_info[data_pack_num*offset_item + 0] = self.nnz_mem_offset +\
+			  (self.nnz_data_region_pointer//data_pack_num)
 		self.cu_arg_info[data_pack_num*offset_item + 2] = len(self.cu_dict[config_name])//self.isca_c
 		self.add_vector_nnz_mem(self.cu_dict[config_name])
 
@@ -270,8 +291,8 @@ class Compiler(c_ast.NodeVisitor):
 
 		self.add_info([self.hbm_pc,
 					   0,
-					   self.nnz_mem_words,
-					   self.rhs_mem_words])
+					   0,
+					   self.nnz_mem_words+self.rhs_mem_words])
 
 		with open(file_name, "wb") as f:
 			""" Write program meta information"""
@@ -282,11 +303,8 @@ class Compiler(c_ast.NodeVisitor):
 
 			""" Write to mem_nnz"""
 			for i in range(self.hbm_pc):
-				self.nnz_data_region[i][0:self.nnz_data_region_pointer].tofile(f)
-
-			""" Write to mem_rhs"""
-			for i in range(self.hbm_pc):
 				self.rhs_data_region[i][0:self.rhs_data_region_pointer].tofile(f)
+				self.nnz_data_region[i][0:self.nnz_data_region_pointer].tofile(f)
 
 	def add_axpby_inst(self,
 					   alpha_addr,
@@ -368,6 +386,93 @@ class Compiler(c_ast.NodeVisitor):
 			(sel_norm<<18)
 		op2 = pack_size
 		self.add_inst([op0, op1, op2, 0], program_end)
+
+	def add_rf_write_inst(self,
+					dst_rf_addr,
+					loc_addr,
+					bank_addr,
+					program_end=False):
+		""" generate the instruction for dot instruction """
+		op0 = self.inst_rf_write
+		op1 = dst_rf_addr
+		op2 = loc_addr
+		op3 = bank_addr
+		self.add_inst([op0, op1, op2, op3], program_end)
+		return 
+
+		""" Replace with the omega inst:
+			if remove the extra rf_write instruction 6 and 10
+			hbm4-cvb4000 u50 frequency increases 177Mhz -> 182Mhz
+			hbm2-cvb4000 u50 frequency increases 243Mhz -> 216Mhz? wierd 
+			problem write address bit width not enough,
+			solution 1 seperate read and write offset, 
+				use more fields in  
+			solution 2 change the rf to the begining 
+				and adjust all instruction cvb_offset accrodingly 
+					- load cvb
+					- cvb write
+					- omega instruction
+			TODO: solution 2 is better, still use 6 bits RF address but 
+			leave 8 bits/256 register space
+
+			TODO: add mechanisim to warn read and write field overflow 
+			limited network program
+			"""
+		hbmInst = np.zeros(self.isca_c, dtype=np.uint32)
+		""" set default write to null """
+		nullAddr = self.register_file_offset
+		hbmInst += (nullAddr<<self.writeBitShift)
+		srcRF = bank_addr
+		srcLoc = loc_addr
+		dstRF = dst_rf_addr % self.isca_c
+		dstLoc = self.register_file_offset-1-(dst_rf_addr>>self.pipeStage)
+		print('srcRF', 'srcLoc', 'dstRF', 'dstLoc')
+		print(srcRF, srcLoc, dstRF, dstLoc)
+
+		hbmInst[srcRF] += (srcLoc<<self.readBitShift) 
+		""" unset default write first"""
+		hbmInst[dstRF] -= (nullAddr<<self.writeBitShift)
+		hbmInst[dstRF] += (dstLoc<<self.writeBitShift) 
+		dstBin = self.IdxToBin(dstRF)
+		srcBin = self.IdxToBin(srcRF)
+		flipFlags = np.bitwise_xor(srcBin, dstBin)
+		routeCtrl = np.zeros(self.isca_c, dtype=np.uint32) 
+		workNode = srcRF
+		for stage_item in range(self.pipeStage):
+			nodeSignal = np.zeros(self.isca_c, dtype=np.uint32) 
+			flipBit = flipFlags[stage_item]
+			workNode = workNode ^ (flipBit<<stage_item)
+			if flipBit:
+				nodeSignal[workNode] = 2
+			else:
+				nodeSignal[workNode] = 1
+			routeCtrl += (nodeSignal<<(2*stage_item))
+			# print(workNode, nodeSignal)
+		hbmInst += routeCtrl
+
+		inst_name='rf_write_'+str(len(self.omegaconf_list))
+		self.omegaconf_list.append(inst_name)
+
+		hbm_addr=self.nnz_mem_offset+\
+			  (self.nnz_data_region_pointer//data_pack_num)
+		""" put the rf write omega instruction to HBM """
+		self.add_vector_nnz_mem(hbmInst.view(np.float32))
+		self.add_omega_inst(hbm_addr=hbm_addr,
+						 	hbm_pack_size=1,
+							l2_opcode=2, 
+							cvb_offset=0)
+
+	def add_cvb_broadcast_inst(self,
+					src_rf_addr,
+					loc_addr,
+					program_end=False):
+		""" generate the instruction for dot instruction """
+		op0 = self.inst_cvb_broadcast
+		op1 = src_rf_addr
+		op2 = loc_addr
+		self.add_inst([op0, op1, op2, 0], program_end)
+		""" TODO replace with omega inst """
+
 	def add_scalar_op_inst(self,
 						   src_0_reg,
 						   src_1_reg,
@@ -393,13 +498,21 @@ class Compiler(c_ast.NodeVisitor):
 		self.add_inst([op0, src_0_reg, force_jump, jump_address], program_end)
 
 	def add_omega_inst(self, 
-					  matrix_info_offset, 
+						hbm_addr,
+						hbm_pack_size,	
+						l2_opcode,
 					  cvb_offset,
+					  input_mode=0,
+					  operator_mode=0,
 					  program_end=False):
 		op0 = self.inst_omega
-		op1 = matrix_info_offset
-		op2 = cvb_offset
-		self.add_inst([op0, op1, op2, 0], program_end)
+		op1 = hbm_addr
+		op2 = hbm_pack_size
+		op3 = cvb_offset +\
+			(l2_opcode<<16)+\
+			(operator_mode<<24)+\
+			(input_mode<<28)
+		self.add_inst([op0, op1, op2, op3], program_end)
 
 	def add_inst(self, op_list, program_end = False):
 		self.add_vector_uint32(op_list, program_end)
@@ -434,11 +547,22 @@ class Compiler(c_ast.NodeVisitor):
 								cvb_offset=0,
 							pack_size=self.unified_vec_pack_len)
 
+	def result_to_rhs(self, vec_name):
+		assert vec_name in self.rhs_hbm, print(vec_name)
+		dst_vec_addr = self.vec_addr(vec_name)
+		self.add_cvb_write_inst(dst_addr=dst_vec_addr,
+							dst_sel_lhs=0,
+							cvb_offset=0,
+							pack_size=self.unified_vec_pack_len,
+							cut_off_bank=self.isca_c
+							)
+
 	def add_vector_nnz_mem(self, vec):
 		""" split the matrix nnz into different HBM PCs"""
 		size = len(vec)
 		""" merged col and nnz HBM so x2 align"""
-		assert size % (self.isca_c*2) == 0
+		# assert size % (self.isca_c*2) == 0
+		assert size % self.isca_c == 0
 		vec_stride = vec.reshape(-1, data_pack_num)
 		size_each_pc = size//self.hbm_pc
 		region_start = self.nnz_data_region_pointer
@@ -502,12 +626,23 @@ class Compiler(c_ast.NodeVisitor):
 					   s1=self.axpby_buffer['s_b'],
 					   length=1)
 
+		assert self.axpby_buffer['v_x'] is not None
+
+		if op_type == 'linear':
+			""" insert nop placeholder for new linear impl by omega """
+			self.insert_ir_table(inst_type='nop') 
+			if self.axpby_buffer['v_y'] is not None:
+				self.insert_ir_table(inst_type='nop') 
+				self.insert_ir_table(inst_type='nop') 
+				self.insert_ir_table(inst_type='nop') 
+
 		""" clear the buffer after emitting """ 
 		self.axpby_buffer['s_a']=None
 		self.axpby_buffer['v_x']=None
 		self.axpby_buffer['s_b']=None
 		self.axpby_buffer['v_y']=None
 		self.axpby_buffer['frac_num']=0
+
 	def temp_var_info(self, var_type, node):
 		if not hasattr(node, 'name'):
 			temp_name ='temp-'+str(self.temp_var_idx)
@@ -648,12 +783,16 @@ class Compiler(c_ast.NodeVisitor):
 
 		if func_name == 'ew_prod':
 			assert len(id_list) == 3
+			""" lhs to cvb """
 			self.insert_ir_table(inst_type='nop') 
+			""" ew_prod using omega network """
 			self.insert_ir_table(inst_type='axpby', 
 								 op_type=func_name,
 								 v0=id_list[1],
 								 v1=id_list[2],
 								 result=id_list[0])
+			""" result to rhs """
+			self.insert_ir_table(inst_type='nop') 
 
 		if func_name == 'ew_reciprocal':
 			assert len(id_list) == 2
@@ -707,6 +846,11 @@ class Compiler(c_ast.NodeVisitor):
 								 v0=id_list[1],
 								 v1=id_list[2],
 								 length=1)
+			""" cvb accumulate """
+			self.insert_ir_table(inst_type='nop') 
+
+			""" result to RF """
+			self.insert_ir_table(inst_type='nop') 
 
 	def visit_If(self, node):
 		self.visit(node.cond)
@@ -816,24 +960,30 @@ class Compiler(c_ast.NodeVisitor):
 			if item_value is not None:
 				self.register_file[idx]=item_value
 		for _, row in self.ir_table.iterrows():
-			# print(self.cu_inst_num, row['inst_type'], self.ir_table.at[self.cu_inst_num, 'inst_type'])
-
 			if row['inst_type'] == 'dot':
 				self.lhs_to_cvb(row['v0'])
 
 				assert row['v1'] in self.rhs_hbm, print(row['v1'])
 				src_rhs_addr = self.vec_addr(row['v1'])
-				result_addr = self.lookup_reg_addr(row['result'])
+				self.add_omega_inst(hbm_addr=src_rhs_addr*self.unified_vec_pack_len,
+						 			hbm_pack_size=self.unified_vec_pack_len,
+									l2_opcode=1,
+									cvb_offset=0)
 
-				self.add_dot_inst(sel_norm=0,
-								  src_tetris_addr=0,
-								  src_vf_addr=src_rhs_addr,
-								  dst_reg=result_addr,
-								  pack_size=self.unified_vec_pack_len)
+				""" omega accumulate the ew prod """
+				config_offset = self.lookup_omegaconf('vector_sum')
+				self.add_omega_inst(hbm_addr=self.cu_arg_info[data_pack_num*config_offset + 0],
+									hbm_pack_size=self.cu_arg_info[data_pack_num*config_offset + 2] ,
+									l2_opcode=2,
+									cvb_offset=0)
+
+				""" write accumulate result to result_addr """
+				result_addr = self.lookup_reg_addr(row['result'])
+				self.add_rf_write_inst(dst_rf_addr=result_addr,
+						   				bank_addr=0,
+										loc_addr=self.unified_vec_pack_len)
 
 			if row['inst_type'] == 'axpby':
-				self.lhs_to_cvb(row['v0'])
-
 				assert row['v1'] in self.rhs_hbm or row['v1'] is None
 
 				if row['s0'] is None:
@@ -852,15 +1002,53 @@ class Compiler(c_ast.NodeVisitor):
 				dst_addr = self.vec_addr(row['result'])
 
 				assert row['op_type'] in self.axpby_type_dict
-				op_type = self.axpby_type_dict.get(row['op_type'])
-				self.add_axpby_inst(alpha_addr=alpha_addr,
-									beta_addr=beta_addr,
-									src_tetris_addr=0,
-									src_vf_addr=src_rhs_addr,
-									dst_addr=dst_addr,
-									op_type=op_type,
-									gamma_addr=0,
-									pack_size=self.unified_vec_pack_len)
+
+				if row['op_type'] == 'ew_prod':
+					self.lhs_to_cvb(row['v0'])
+					self.add_omega_inst(hbm_addr=src_rhs_addr*self.unified_vec_pack_len,
+						 				hbm_pack_size=self.unified_vec_pack_len,
+										l2_opcode=1,
+										cvb_offset=0)
+					self.result_to_rhs(row['result'])
+				elif row['op_type'] == 'linear':
+					assert row['v0'] in self.rhs_hbm, print(row['v0'])
+					self.add_cvb_broadcast_inst(
+						src_rf_addr=alpha_addr,
+						loc_addr=self.unified_vec_pack_len)
+					src_lhs_addr=self.vec_addr(row['v0'])
+					self.add_omega_inst(hbm_addr=src_lhs_addr*self.unified_vec_pack_len,
+									hbm_pack_size=self.unified_vec_pack_len,
+									l2_opcode=3,
+									cvb_offset=0)
+					if row['v1'] is not None:
+						self.add_cvb_broadcast_inst(
+							src_rf_addr=beta_addr,
+							loc_addr=2*self.unified_vec_pack_len)
+						self.add_omega_inst(hbm_addr=src_rhs_addr*self.unified_vec_pack_len,
+											hbm_pack_size=self.unified_vec_pack_len,
+											l2_opcode=3,
+											cvb_offset=self.unified_vec_pack_len)
+						""" add 2 vectors on cvb """
+						self.add_omega_inst(hbm_addr=0,
+											hbm_pack_size=self.unified_vec_pack_len,
+											l2_opcode=4,
+											input_mode=1,
+											operator_mode=1,
+											cvb_offset=0)
+
+					self.result_to_rhs(row['result'])
+
+				else:
+					self.lhs_to_cvb(row['v0'])
+					op_type = self.axpby_type_dict.get(row['op_type'])
+					self.add_axpby_inst(alpha_addr=alpha_addr,
+										beta_addr=beta_addr,
+										src_tetris_addr=0,
+										src_vf_addr=src_rhs_addr,
+										dst_addr=dst_addr,
+										op_type=op_type,
+										gamma_addr=0,
+										pack_size=self.unified_vec_pack_len)
 
 			if row['inst_type'] == 'axpby-reci':
 				assert row['v0'] in self.rhs_hbm 
@@ -959,11 +1147,11 @@ class Compiler(c_ast.NodeVisitor):
 
 			if row['inst_type'] == 'omega_net':
 				config_offset = self.lookup_omegaconf(row['v0'])
-
 				cvb_offset = self.offset_translate(row['s0'])
-				
-				self.add_omega_inst(config_offset, 
-									cvb_offset)
+				self.add_omega_inst(hbm_addr=self.cu_arg_info[data_pack_num*config_offset + 0],
+									hbm_pack_size=self.cu_arg_info[data_pack_num*config_offset + 2] ,
+									l2_opcode=0,
+									cvb_offset=cvb_offset)
 
 			if row['inst_type'] == 'cvb_write':
 				assert row['v0'] in self.rhs_hbm
@@ -1032,25 +1220,29 @@ class Compiler(c_ast.NodeVisitor):
 
 		self.oneside_pass()
 
+		""" Config omega network programs """
+		self.nnz_mem_offset = len(self.rhs_hbm)*self.unified_vec_pack_len
+		for config_item in self.omegaconf_list[1:]:
+			self.dynamic_config(config_item) 
+
 		self.codegen_pass()
 		self.reg_layout.to_csv('./temp/reg_layout.csv', index=True)
 
 		""" make sure # of inst % 4 == 0"""
 		inst_total_num = self.cu_inst_num
 		inst_rom_align_padding = 4 - inst_total_num % 4
+		assert len(self.ir_table)==inst_total_num, print('inst num', inst_total_num, len(self.ir_table))
 		for _ in range(inst_rom_align_padding-1):
 			self.add_inst([self.inst_halt, 0, 0, 0])
 		self.add_inst([self.inst_halt, 0, 0, 0], program_end=True)
-		assert self.cu_inst_num < 256, print("Exceed Inst ROM")
+		assert self.cu_inst_num < 2048, print("Exceed Inst ROM")
 
 		""" matrix info pack 0 is reserved """
 		self.cu_arg_info[data_pack_num*0 + 0] = self.unified_vec_pack_len
 		self.cu_arg_info[data_pack_num*0 + 1] = self.sol_vec_pack_len
+		self.cu_arg_info[data_pack_num*0 + 2] = self.register_file_offset
 
-		for config_item in self.omegaconf_list[1:]:
-			self.dynamic_config(config_item) 
-
-		""" add Ax into HBM """
+		""" Add omega instruction info into indice HBM """
 		self.add_vector_uint32(self.cu_arg_info, 
 						 record_stage_size=True)
 
@@ -1070,5 +1262,5 @@ class Compiler(c_ast.NodeVisitor):
 			self.add_vector_rhs_mem(init_item)
 
 		""" Check reg and vec addr space overflow """
-		assert len(self.reg_onchip) < 64
+		assert len(self.reg_onchip) < self.RegFileSize
 		assert len(self.rhs_hbm) < 64

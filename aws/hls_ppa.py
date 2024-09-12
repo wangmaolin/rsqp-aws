@@ -42,10 +42,25 @@ def main():
     SearchNames = ['cu_top',
                    'instruction_omega_fu',
                     'omega_compute_loop', 
+                    'omega_ew_prod_loop', 
+                    'omega_read_loop', 
+                    'instruction_norm_inf_binary_tree',
                     'instruction_axpby_fu',
                     'axpby_loop',
                     'instruction_dot_fu',
-                    'inst_dot_loop'
+                    'inst_dot_loop',
+                    'instruction_vec_max_fu',
+                    'vec_max_loop',
+                    'instruction_vec_min_fu',
+                    'vec_min_loop',
+                    'instruction_ew_div_fu',
+                    'ew_div_loop',
+                    'instruction_ew_prod_fu',
+                    'ew_prod_loop',
+                    'instruction_cond_set_fu',
+                    'cond_set_loop',
+                    'instruction_scaled_add_fu',
+                    'scaled_add_loop',
                    ]
 
     df = extract_module_info(file_content, SearchNames)
