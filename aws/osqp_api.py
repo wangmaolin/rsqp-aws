@@ -94,13 +94,13 @@ def main():
 	logging.getLogger().setLevel(logging.DEBUG)
 
 	qp_problem = problem_instance_gen(
-		test_problem_name = 'Control', 
+		test_problem_name = 'Portfolio', 
 		dim_idx = 0)
 
 	prob = osqpFPGA(
-		hbm_pc=1,
+		hbm_pc=4,
 		fpga_id=0,
-		bitstream='./temp/u280-1-ins1-4000.xclbin')
+		bitstream='./temp/u50-4-u50-4000.xclbin')
 
 	prob.setup(P = qp_problem['P'],
 			q = qp_problem['q'],

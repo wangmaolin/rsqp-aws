@@ -1,7 +1,7 @@
 Reconfigurable Solvers for QP running on AWS FPGAs
 ===
 # Python Interface 
-Example: `./aws/osqp_api.py`
+Example run: `python ./aws/osqp_api.py`
 ```
 prob = osqpFPGA()
 prob.setup(P = qp_problem['P'],
