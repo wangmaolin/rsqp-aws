@@ -15,5 +15,9 @@ hardware benefit
 - Frequency increase 
 - Area saved
 
-## Methods
-Experiment dtype in ```osqp_pth.py```
+## Requirements
+python package: osqp, torch
+
+To test different dtypes in ```osqp_pth.py```, requires a CUDA GPU
+- torch.bfloat16 seems to work 
+- torch.float16 and torch.float8_* doesn't work yet

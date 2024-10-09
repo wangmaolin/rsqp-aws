@@ -27,8 +27,8 @@ def c_sqrt(a):
 
 def mp_spmv(mat, vec):
     """ Mixed precision SpMV """
+    """ torch.float16 doesn't support sparse matrix input yet """
     # return torch.matmul(mat, vec)
-    """ torch.float16 doesn't support sparse matrix input """
     return torch.matmul(mat.to_dense(), vec)
 
 class osqpTorch:
@@ -254,9 +254,14 @@ def main():
         test_problem_name = 'Control', 
         dim_idx = 0)
     """ Solver using mixed precision"""
-    prob_mp=osqpTorch(
-        dtype=torch.float32,
-        device='cpu')
+    prob_mp = osqpTorch(
+        # dtype=torch.float32,
+        dtype=torch.bfloat16, # works
+        # dtype=torch.float16, not work
+        # dtype=torch.float8_e5m2fnuz, not work
+        # dtype=torch.float8_e4m3fn, not work
+        device='cuda')
+        # device='cpu')
     prob_mp.setup(
         P=qp_problem['P'], 
         q=qp_problem['q'],
@@ -282,12 +287,12 @@ def main():
         l=qp_problem['l'],
         u=qp_problem['u'])
 
-    prob_fp32= prob.solve()
+    prob_fp32 = prob.solve()
     # print(dir(prob_fp32.info))
     # print(prob_fp32.info.pri_res)
     # print(prob_fp32.info.dua_res)
 
-    plt.plot(prob_mp.work_x, label='mixed precision')
+    plt.plot(prob_mp.work_x.to(torch.float32).cpu(), label='mixed precision')
     plt.plot(prob_fp32.x, label='fp32')
     plt.legend()
     plt.show()
