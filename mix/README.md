@@ -1,5 +1,13 @@
 Mixed precision OSQP
 ===
+## Experiments
+python package: osqp, torch
+
+run ```osqp_pth.py``` at the ```mix``` folder
+
+To test different dtypes in ```osqp_pth.py```, requires a CUDA GPU
+- direct converstion to torch.bfloat16 seems to work 
+- direct conversion to torch.float16 and torch.float8_* doesn't work yet
 
 ## Motivation 
 
@@ -14,10 +22,3 @@ Using reduce intermediate precision without affecting the solution accuray
 hardware benefit 
 - Frequency increase 
 - Area saved
-
-## Requirements
-python package: osqp, torch
-
-To test different dtypes in ```osqp_pth.py```, requires a CUDA GPU
-- torch.bfloat16 seems to work 
-- torch.float16 and torch.float8_* doesn't work yet
