@@ -14,3 +14,6 @@ Using reduce intermediate precision without affecting the solution accuray
 hardware benefit 
 - Frequency increase 
 - Area saved
+
+## Methods
+Experiment dtype in ```osqp_pth.py```
