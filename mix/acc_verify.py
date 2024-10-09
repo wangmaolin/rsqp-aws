@@ -14,22 +14,23 @@ def main():
 		dim_idx = 0)
 	""" Research of using mixed precision"""
 	prob_mp=osqpTorch()
-	prob_mp.setup(P=qp_problem['P'], 
-			q=qp_problem['q'],
-			A=qp_problem['A'],
-			l=qp_problem['l'],
-			u=qp_problem['u'])
+	prob_mp.setup(
+		P=qp_problem['P'], 
+		q=qp_problem['q'],
+		A=qp_problem['A'],
+		l=qp_problem['l'],
+		u=qp_problem['u'])
 	prob_mp.solve()
 
-	return
 	""" Result of using standard precision"""
 	prob=osqp.OSQP()
-	prob.setup(scaling=0,
-			P=qp_problem['P'], 
-			q=qp_problem['q'],
-			A=qp_problem['A'],
-			l=qp_problem['l'],
-			u=qp_problem['u'])
+	prob.setup(
+		scaling=0,
+		P=qp_problem['P'], 
+		q=qp_problem['q'],
+		A=qp_problem['A'],
+		l=qp_problem['l'],
+		u=qp_problem['u'])
 
 	official_results = prob.solve()
 	print(official_results)
