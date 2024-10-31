@@ -1262,5 +1262,5 @@ class Compiler(c_ast.NodeVisitor):
 			self.add_vector_rhs_mem(init_item)
 
 		""" Check reg and vec addr space overflow """
-		assert len(self.reg_onchip) < self.RegFileSize
+		assert len(self.reg_onchip) < self.RegFileSize, print(len(self.reg_onchip), self.RegFileSize)
 		assert len(self.rhs_hbm) < 64

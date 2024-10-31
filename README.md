@@ -1,7 +1,7 @@
 Reconfigurable Solvers for QP running on AWS FPGAs
 ===
 # Python Interface 
-Example run: `python ./aws/osqp_api.py`
+Example run: `python ./aws/osqp_api.py` (tested with python 3.10)
 ```
 prob = osqpFPGA()
 prob.setup(P = qp_problem['P'],
@@ -22,7 +22,7 @@ We support on premise and AWS deployment with the following FPGA models:
 
 | Instance Type | U50 | U280 | f1.2xlarge| f1.4xlarge| f1.16xlarge|
 |:---:|---|---|---|---|---|
-| Solver Cores | 16 | 32 | 7 | 14 | 56 |
+<!-- | Solver Cores | 16 | 32 | 7 | 14 | 56 | -->
 
 ## Example setup on AWS 
 Launch an F1 instance with [FPGA Developer AMI](https://aws.amazon.com/marketplace/pp/prodview-gimv3gqbpe57k), 

@@ -440,3 +440,40 @@ def ut_factor(cu_dict, qp_problem, scalars):
         Lnz=factor_dict['Lnz'])
 
     cu_dict['UpFactor'] = CompilerFactor.top_pass()
+
+def osqp_hybrid(cu_dict, qp_problem, scalars):
+    factor_dict = symbolic_factor(
+        qp_problem['P'], 
+        qp_problem['A'], 
+        scalars['sigma'], 
+        scalars['rho'])
+
+    csc_L = factor_dict['csc_L'] 
+    diag_D = factor_dict['diag_D'] 
+    amd_order = factor_dict['amd_order'] 
+
+    # check_empty_rows(csc_L.T.tocsr())
+    # check_empty_rows(csc_L.tocsr())
+    amd_order = Shift_AMD(amd_order, scalars)
+
+    Setup_LDL_Perm(cu_dict, scalars, amd_order)
+    Setup_LDL_Solve(cu_dict, scalars, csc_L, diag_D)
+    Setup_SpMV(cu_dict, qp_problem, scalars)
+    Setup_Constr(cu_dict, qp_problem)
+
+    """ Compute preconditioner for PCG"""
+    PsI = qp_problem['P'] +\
+        scalars['sigma'] * scipy.sparse.identity(qp_problem['P'].shape[0])
+    diag_PsI = PsI.diagonal()
+    AtA = qp_problem['A'].transpose() * qp_problem['A']
+    diag_AtA= AtA.diagonal()
+    cu_dict['diag_PsI'] = diag_PsI
+    cu_dict['diag_AtA'] = diag_AtA
+
+    dot_len=scalars['pdim_max']
+    compileVsum = MatMulSched(csr_for_sum(dot_len+1, dot_len, dot_len), 
+                     iscaC=scalars['isca_c'], 
+                     readOffset=0, 
+                     pdimMax=scalars['pdim_max'],
+                     CtrlOnly=True)
+    cu_dict['vector_sum'] = compileVsum.top_pass()

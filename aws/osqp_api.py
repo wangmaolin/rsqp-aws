@@ -9,9 +9,6 @@ import logging
 from utils import data_pack_num
 from utils import pad_problem_matrices
 
-from utils import data_pack_num
-from utils import pad_problem_matrices
-
 import subprocess
 import pandas as pd
 
@@ -42,7 +39,8 @@ class osqpFPGA:
 
 		scalars['pdim_max']=max(scalars['pdim_m'], scalars['pdim_n'])
 
-		helper_func=getattr(src_helper, 'osqp_indirect')
+		# helper_func=getattr(src_helper, 'osqp_indirect')
+		helper_func=getattr(src_helper, 'osqp_hybrid')
 		helper_func(cu_dict, qp_problem, scalars)
 
 		logging.debug("dim_n %d, %d dim_m %d, %d", 
@@ -58,7 +56,8 @@ class osqpFPGA:
 							scalars['n_padding'], 
 							scalars['m_padding'] )
 
-		o_compiler.program_gen('./aws/osqp_indirect.c')
+		# o_compiler.program_gen('./aws/osqp_indirect.c')
+		o_compiler.program_gen('./aws/osqp_hybrid.c')
 
 		o_compiler.result_info(var_name='work_x', 
 							vec_pack_len=o_compiler.unified_vec_pack_len)
