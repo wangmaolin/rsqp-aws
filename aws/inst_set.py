@@ -120,7 +120,7 @@ class Compiler(c_ast.NodeVisitor):
 			- [2]:
 			- [3]:
 
-			- [4]:
+			- [4]: 
 			- [5]: stage_5_pack_size or indice mem pack words
 			- [6]:
 			- [7]: mem data words
@@ -128,7 +128,7 @@ class Compiler(c_ast.NodeVisitor):
 			- [8]: mem ground truth loc
 			- [9]: mem verify loc
 			- [10]: verify vec pack len
-			- [11]: mem sol words
+			- [11]: work_y copy back loc
 
 			- [12]: HBM PC NUM
 			- [13]: 0
@@ -287,7 +287,7 @@ class Compiler(c_ast.NodeVisitor):
 		self.add_info([self.mem_ground_truth_loc,
 					   self.mem_verify_loc,
 					   self.verify_vec_pack_len,
-					   0])
+					   self.work_y_loc])
 
 		self.add_info([self.hbm_pc,
 					   0,
@@ -535,6 +535,10 @@ class Compiler(c_ast.NodeVisitor):
 		vf_addr = self.vec_addr(var_name)
 		self.mem_verify_loc = ((vf_addr * vec_pack_len)<<1)
 		self.verify_vec_pack_len = vec_pack_len 
+
+	def dual_info(self):
+		vf_addr = self.vec_addr('work_y')
+		self.work_y_loc = vf_addr * self.unified_vec_pack_len
 
 	def lhs_to_cvb(self, vec_name):
 		if vec_name is None:

@@ -31,12 +31,12 @@ class BaseSched:
 			AWS 64 delay 51
 			U50 64 delay 60
 		"""
-		pipeIIdelay={16:43, 32: 49, 64:60}
+		pipeIIdelay={16: 33, 32: 38, 64: 43}
 		assert iscaC in pipeIIdelay
 		""" Instruction Scheduling Delay for True Dependency """
 		self.pipeDelay = pipeIIdelay.get(iscaC)
 		""" Instruction Scheduling Delay for Anti Dependency """
-		pipeAntiDelay={16:43, 32: 46, 64:60}
+		pipeAntiDelay={16: 33, 32: 38, 64: 43}
 		self.antiDelay = pipeAntiDelay.get(iscaC)
 		""" For scheduling"""
 		self.rrIndices=[]
@@ -143,7 +143,7 @@ class BaseSched:
 	def list_sched(self, rrTable):
 		instCount = rrTable.shape[0]
 		resourceWidth = rrTable.shape[1]
-		instSched = np.ones(instCount, dtype=np.uint32)*-1
+		instSched = np.ones(instCount, dtype=np.int32)*-1
 		""" Leave redundancy due to pipeline delay """
 		condense_bitmap = np.zeros(
 			(instCount, resourceWidth), 

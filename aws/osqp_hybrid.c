@@ -17,7 +17,7 @@ void main(){
 	float const_minus_1 = -1.0;
 	// solver states
 	float admm_iters = 0.0;
-	float max_iter = 101.0; //<-
+	float max_iter = 4000.0; //<-
 	float prim_res, eps_prim;
 	float dual_res, eps_dual;
 	float rho = 0.1;

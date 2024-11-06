@@ -8,9 +8,14 @@ import src_helper
 import logging
 from utils import data_pack_num
 from utils import pad_problem_matrices
+import osqp
 
 import subprocess
 import pandas as pd
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('--hbm-pc', type=int, default=4)
+parser.add_argument('--linsys_solver', '-l', type=str, default='osqp_indirect')
 
 class osqpFPGA:
 	def __init__(self, 
@@ -23,7 +28,7 @@ class osqpFPGA:
 		self.fpga_id=fpga_id
 		self.elf_on_fpga='./temp/test.fpga'
 
-	def setup(self, P, q, A, l, u):
+	def setup(self, P, q, A, l, u, linsys_solver):
 		qp_problem={'P':P, 'q':q, 'A':A, 'l': l, 'u':u}
 		cu_dict = {}
 		scalars={'sigma':1e-6,
@@ -39,8 +44,7 @@ class osqpFPGA:
 
 		scalars['pdim_max']=max(scalars['pdim_m'], scalars['pdim_n'])
 
-		# helper_func=getattr(src_helper, 'osqp_indirect')
-		helper_func=getattr(src_helper, 'osqp_hybrid')
+		helper_func=getattr(src_helper, linsys_solver)
 		helper_func(cu_dict, qp_problem, scalars)
 
 		logging.debug("dim_n %d, %d dim_m %d, %d", 
@@ -56,12 +60,11 @@ class osqpFPGA:
 							scalars['n_padding'], 
 							scalars['m_padding'] )
 
-		# o_compiler.program_gen('./aws/osqp_indirect.c')
-		o_compiler.program_gen('./aws/osqp_hybrid.c')
+		o_compiler.program_gen('./aws/'+linsys_solver+'.c')
 
 		o_compiler.result_info(var_name='work_x', 
 							vec_pack_len=o_compiler.unified_vec_pack_len)
-
+		o_compiler.dual_info()
 		o_compiler.init_values()
 
 		o_compiler.write_elf(self.elf_on_fpga)
@@ -90,23 +93,34 @@ class osqpFPGA:
 							filtered_df['Result'].values[0]))
 
 def main():
+	args = parser.parse_args()
 	logging.getLogger().setLevel(logging.DEBUG)
-
 	qp_problem = problem_instance_gen(
-		test_problem_name = 'Portfolio', 
-		dim_idx = 0)
+		# test_problem_name = 'Portfolio', 
+		test_problem_name = 'Lasso', 
+		dim_idx = 9)
 
+	""" CPU solve """
+	cpu_prob = osqp.OSQP()
+	cpu_prob.setup(P = qp_problem['P'],
+			q = qp_problem['q'],
+			A = qp_problem['A'],
+			l = qp_problem['l'],
+			u = qp_problem['u'],
+			linsys_solver = 'qdldl')
+	results = cpu_prob.solve()
+
+	""" FPGA solve """
 	prob = osqpFPGA(
-		hbm_pc=4,
+		hbm_pc=args.hbm_pc,
 		fpga_id=0,
-		bitstream='./temp/u50-4-u50-4000.xclbin')
-
+		bitstream='./temp/u50-'+str(args.hbm_pc)+'-unroll-4000.xclbin')
 	prob.setup(P = qp_problem['P'],
 			q = qp_problem['q'],
 			A = qp_problem['A'],
 			l = qp_problem['l'],
-			u = qp_problem['u'])
-
+			u = qp_problem['u'],
+			linsys_solver = args.linsys_solver)
 	prob.solve()
 
 if __name__ == '__main__':

@@ -13,8 +13,9 @@
 
 #define DATA_PACK_NUM 16
 
-void save_results(float * memPtr, int memLen){
-    std::ofstream vector_file("./temp/result_vector.txt");
+void save_results(float * memPtr, int memLen, const char * result_file){
+    // std::ofstream vector_file("./temp/result_vector.txt");
+    std::ofstream vector_file(result_file);
     for(int loc=0; loc<memLen; loc++){
         vector_file<<memPtr[loc]<<"\n";
     }
@@ -153,6 +154,8 @@ int main(int argc, char** argv) {
     int channelAddr = (program_info[9] >>1)*DATA_PACK_NUM; 
     int channelPacks = program_info[10];
     std::vector<float> combinedResult(channelPacks*iscaC);
+    int workyAddr = program_info[11] *DATA_PACK_NUM; 
+    std::vector<float> combined_work_y(channelPacks*iscaC);
     
 	for(int hbmItem=0; hbmItem<hbmTotalChannels; hbmItem++) {
         /* Transfer HBM channel */
@@ -167,8 +170,24 @@ int main(int argc, char** argv) {
                 combinedResult.data()[dstAddr] = host_lr_buf.data()[srcAddr];
             }
         }
+        /* Interleave work_y */
+        for(int pItem=0; pItem<channelPacks; pItem++){
+            for(int dItem=0; dItem<DATA_PACK_NUM; dItem++){
+                int srcAddr = workyAddr + pItem*DATA_PACK_NUM+dItem;
+                int dstAddr = pItem*iscaC + hbmItem*DATA_PACK_NUM + dItem;
+                combined_work_y.data()[dstAddr] = host_lr_buf.data()[srcAddr];
+            }
+        }
+
     }
-    save_results(combinedResult.data(), channelPacks*iscaC);
+    save_results(combinedResult.data(), 
+                channelPacks*iscaC,
+                "./temp/result_vector.txt"
+                );
+    save_results(combined_work_y.data(), 
+                channelPacks*iscaC,
+                "./temp/work_y.txt"
+                );
 
     return EXIT_SUCCESS;
 }
